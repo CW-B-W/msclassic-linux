@@ -1,0 +1,47 @@
+import unittest
+
+from msclassic.platforms import UnsupportedPlatformError, select_platform
+
+
+class PlatformSelectionTests(unittest.TestCase):
+    def test_ubuntu_2404_selects_lubuntu_adapter(self):
+        adapter = select_platform(
+            None,
+            {"ID": "ubuntu", "VERSION_ID": "24.04", "ID_LIKE": "debian"},
+        )
+
+        self.assertEqual(adapter.id, "lubuntu-24.04")
+        self.assertIn("mesa-utils", adapter.package_names)
+        self.assertIn("mesa-vulkan-drivers:i386", adapter.package_names)
+        self.assertEqual(
+            adapter.chromium_policy_dir,
+            "/etc/chromium/policies/managed",
+        )
+
+    def test_explicit_matching_adapter_is_accepted(self):
+        adapter = select_platform(
+            "lubuntu-24.04",
+            {"ID": "ubuntu", "VERSION_ID": "24.04"},
+        )
+
+        self.assertEqual(adapter.id, "lubuntu-24.04")
+
+    def test_unsupported_platforms_have_fixed_error(self):
+        cases = (
+            (None, {"ID": "fedora", "VERSION_ID": "42"}),
+            (None, {"ID": "arch"}),
+            (None, {"ID": "ubuntu", "VERSION_ID": "24.10"}),
+            ("fedora-42", {"ID": "ubuntu", "VERSION_ID": "24.04"}),
+            ("lubuntu-24.04", {"ID": "fedora", "VERSION_ID": "42"}),
+        )
+        for requested, release in cases:
+            with self.subTest(requested=requested, release=release):
+                with self.assertRaisesRegex(
+                    UnsupportedPlatformError,
+                    "unsupported platform; currently supported: lubuntu-24.04",
+                ):
+                    select_platform(requested, release)
+
+
+if __name__ == "__main__":
+    unittest.main()
