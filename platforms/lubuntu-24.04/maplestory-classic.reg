@@ -1,0 +1,14 @@
+REGEDIT4
+
+[HKEY_CURRENT_USER\Software\Wine\AppDefaults\Maplestory_Classic.exe]
+"Version"="win10"
+
+[HKEY_CURRENT_USER\Software\Wine\DirectInput]
+"UseLinuxInputEvents"="Y"
+"KeyboardUseNonExclusive"="Y"
+"MouseUseNonExclusive"="Y"
+
+[HKEY_CURRENT_USER\Software\Wine\X11 Driver]
+"UseTakeFocus"="N"
+"Grab"="N"
+"GrabFullscreen"="N"
