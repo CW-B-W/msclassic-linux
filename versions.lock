@@ -1,0 +1,15 @@
+schema = 1
+
+[wine]
+version = "wine-11.10-staging-tkg-amd64-wow64"
+url = "https://github.com/Kron4ek/Wine-Builds/releases/download/11.10/wine-11.10-staging-tkg-amd64-wow64.tar.xz"
+algorithm = "sha256"
+digest = "5355cff72783e30f96e3e47aef440b0408a7bf550e53a00c8df139186f37ea25"
+size = 97357652
+
+[nxdl]
+version = "v0.1.2-prerelease3"
+url = "https://github.com/HikariCalyx/nxdl/releases/download/v0.1.2-prerelease3/nxdl_x86-64-linux"
+algorithm = "sha256"
+digest = "256582f47dec30a3ba1482571dacfc4c387c746b5061a52c5659b8b2eadedf7d"
+size = 3521328
