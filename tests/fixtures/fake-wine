@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+set -euo pipefail
+receipt="$(dirname "$0")/receipt.txt"
+: > "$receipt"
+for value in "$@"; do
+  printf '%s\n' "$value" >> "$receipt"
+done

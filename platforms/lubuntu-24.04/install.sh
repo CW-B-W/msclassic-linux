@@ -56,6 +56,11 @@ mapfile -t packages < <(
 "${privilege[@]}" apt-get update
 "${privilege[@]}" apt-get install -y "${packages[@]}"
 "${privilege[@]}" locale-gen zh_TW.UTF-8
+chromium_policy_dir="/etc/chromium/policies/managed"
+"${privilege[@]}" install -d -m 0755 "$chromium_policy_dir"
+"${privilege[@]}" install -m 0644 \
+  "$repo/platforms/lubuntu-24.04/chromium-policy.json" \
+  "$chromium_policy_dir/msclassic-linux.json"
 
 # Stage 2: graphics-gated, checksum-locked application installation.
 python3 -m msclassic.cli doctor --preflight --json
