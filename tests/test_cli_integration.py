@@ -11,6 +11,7 @@ from unittest import mock
 from msclassic.approval import GraphicsApprovalError
 from msclassic.cli import main
 from msclassic.doctor import GraphicsReport
+from msclassic.updater import UpdateCheck
 
 
 REPO = Path(__file__).resolve().parents[1]
@@ -152,6 +153,68 @@ class CliIntegrationTests(unittest.TestCase):
                 ]
             },
         )
+
+    def test_update_and_stop_require_explicit_mutation_flags(self):
+        with mock.patch(
+            "msclassic.cli.check_update",
+            return_value=UpdateCheck(1, 2, True, "ready"),
+        ):
+            code, output, _ = self.invoke(["update"])
+        self.assertEqual(code, 0)
+        self.assertIn('"allowed": true', output)
+
+        with mock.patch("msclassic.cli.stop_prefix") as stopped:
+            code, _, _ = self.invoke(["stop"])
+            self.assertEqual(code, 2)
+            stopped.assert_not_called()
+            code, _, _ = self.invoke(["stop", "--yes"])
+            self.assertEqual(code, 0)
+            stopped.assert_called_once()
+
+    def test_trial_lifecycle_writes_redacted_private_state(self):
+        begin = [
+            "trial",
+            "begin",
+            "--name",
+            "virgl-check",
+            "--hypothesis",
+            "VirGL provides OpenGL",
+            "--variable",
+            "opengl_renderer",
+            "--before",
+            "llvmpipe",
+            "--after",
+            "virgl",
+            "--expected",
+            "VirGL appears",
+            "--pass-rule",
+            "gate_passed=true",
+        ]
+        with mock.patch(
+            "msclassic.cli.collect_graphics_report",
+            return_value=graphics_report(passes=True),
+        ):
+            self.assertEqual(self.invoke(begin)[0], 0)
+        self.assertEqual(
+            self.invoke(["trial", "observe", "AnyDesk reconnected"])[0],
+            0,
+        )
+        code, output, _ = self.invoke(["trial", "finish", "candidate"])
+        self.assertEqual(code, 0)
+        manifest = json.loads((Path(output.strip()) / "manifest.json").read_text())
+        self.assertEqual(manifest["observations"], ["AnyDesk reconnected"])
+
+    def test_uninstall_retains_client_and_prefix(self):
+        client = self.home / "Games/MapleStoryClassic"
+        prefix = self.root / "data/maplestory-classic/prefix-wine1110"
+        client.mkdir(parents=True)
+        prefix.mkdir(parents=True)
+        with mock.patch("msclassic.cli.restore_desktop_handler") as restored:
+            code, _, _ = self.invoke(["uninstall"])
+        self.assertEqual(code, 0)
+        restored.assert_called_once()
+        self.assertTrue(client.exists())
+        self.assertTrue(prefix.exists())
 
 
 if __name__ == "__main__":
