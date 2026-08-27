@@ -18,6 +18,8 @@ from msclassic.installer import (
     execute_install,
     InstallAction,
     InstallPlan,
+    _install_ngs_service,
+    _prefix_initialized,
     _run_runtime,
     perform_install,
     package_command_prefix,
@@ -33,6 +35,7 @@ REQUIRED_CLIENT_FILES = (
     "UnityPlayer.dll",
     "GameAssembly.dll",
     "Maplestory_Classic_Data/Plugins/x86_64/grap/grap-core64.aes",
+    "Maplestory_Classic_Data/Plugins/x86_64/grap/NGService.exe",
 )
 REPO = Path(__file__).resolve().parents[1]
 
@@ -100,11 +103,26 @@ class InstallerTests(unittest.TestCase):
             source_bytes + self.artifact.size * 3 + MINIMUM_FREE_BYTES,
         )
         self.assertIn("import_client", [action.kind for action in plan.actions])
+        kinds = [action.kind for action in plan.actions]
+        self.assertLess(kinds.index("import_registry"), kinds.index("install_ngs"))
 
     def test_rejects_incomplete_source(self):
         (self.source / "UnityPlayer.dll").unlink()
         with self.assertRaises(InstallerError):
             build_install_plan(self.paths, {"wine": self.artifact}, self.source, LUBUNTU_2404)
+
+    def test_rejects_source_without_vendor_ngs_installer(self):
+        (
+            self.source
+            / "Maplestory_Classic_Data/Plugins/x86_64/grap/NGService.exe"
+        ).unlink()
+        with self.assertRaises(InstallerError):
+            build_install_plan(
+                self.paths,
+                {"wine": self.artifact},
+                self.source,
+                LUBUNTU_2404,
+            )
 
     def test_existing_destination_is_verified_or_backed_up_before_import(self):
         self.paths.client.mkdir(parents=True)
@@ -181,9 +199,16 @@ class InstallerTests(unittest.TestCase):
             encoding="utf-8",
         )
         self.paths.prefix.mkdir(parents=True)
-        (self.paths.prefix / "system.reg").write_text("registry", encoding="utf-8")
-        (self.paths.prefix / "user.reg").write_text("registry", encoding="utf-8")
+        (self.paths.prefix / "user.reg").write_text(
+            "WINE REGISTRY Version 2\n", encoding="utf-8"
+        )
         (self.paths.prefix / "drive_c/windows/system32").mkdir(parents=True)
+        (self.paths.prefix / "system.reg").write_text(
+            "WINE REGISTRY Version 2\n"
+            "[System\\\\ControlSet001\\\\Services\\\\PlugPlay] 1\n"
+            "[System\\\\ControlSet001\\\\Services\\\\RpcSs] 1\n",
+            encoding="utf-8",
+        )
         timed_out = subprocess.TimeoutExpired([str(runtime / "bin/wineboot")], 60)
         completed = subprocess.CompletedProcess([], 0)
 
@@ -194,6 +219,10 @@ class InstallerTests(unittest.TestCase):
         self.assertEqual(commands[0], [str(runtime / "bin/wineboot"), "-u"])
         self.assertEqual(commands[1:], [[str(runtime / "bin/wineserver"), "-k"], [str(runtime / "bin/wineserver"), "-w"]])
         self.assertEqual(invoked.call_args_list[0].kwargs["timeout"], 60)
+        self.assertEqual(
+            invoked.call_args_list[0].kwargs["env"]["WINEDLLOVERRIDES"],
+            "mscoree,mshtml=",
+        )
 
     def test_wineboot_timeout_rejects_incomplete_prefix(self):
         from msclassic.lockfile import load_versions
@@ -222,6 +251,195 @@ class InstallerTests(unittest.TestCase):
         with mock.patch("msclassic.installer.subprocess.run", side_effect=[timed_out, completed, completed]):
             with self.assertRaises(InstallerError):
                 _run_runtime(self.paths, ["wineboot", "-u"])
+
+    def test_wineboot_success_flushes_server_before_accepting_prefix(self):
+        from msclassic.lockfile import load_versions
+
+        artifact = load_versions(REPO / "versions.lock")["wine"]
+        runtime = self.paths.tools / artifact.version
+        (runtime / "bin").mkdir(parents=True)
+        for name in ("wine", "wineserver", "wineboot", "regedit"):
+            tool = runtime / "bin" / name
+            tool.write_bytes(b"tool")
+            tool.chmod(0o700)
+        (runtime / ".msclassic-artifact.json").write_text(
+            json.dumps(
+                {
+                    "schema": 1,
+                    "name": artifact.name,
+                    "version": artifact.version,
+                    "digest": artifact.digest,
+                }
+            ),
+            encoding="utf-8",
+        )
+        self.paths.prefix.mkdir(parents=True)
+        (self.paths.prefix / "user.reg").write_text(
+            "WINE REGISTRY Version 2\n", encoding="utf-8"
+        )
+        (self.paths.prefix / "drive_c/windows/system32").mkdir(parents=True)
+
+        def fake_run(argv, **kwargs):
+            if argv == [str(runtime / "bin/wineserver"), "-w"]:
+                (self.paths.prefix / "system.reg").write_text(
+                    "WINE REGISTRY Version 2\n"
+                    "[System\\\\ControlSet001\\\\Services\\\\PlugPlay] 1\n"
+                    "[System\\\\ControlSet001\\\\Services\\\\RpcSs] 1\n",
+                    encoding="utf-8",
+                )
+            return subprocess.CompletedProcess(argv, 0)
+
+        with mock.patch("msclassic.installer.subprocess.run", side_effect=fake_run) as invoked:
+            _run_runtime(self.paths, ["wineboot", "-u"])
+
+        self.assertEqual(
+            [call.args[0] for call in invoked.call_args_list],
+            [
+                [str(runtime / "bin/wineboot"), "-u"],
+                [str(runtime / "bin/wineserver"), "-k"],
+                [str(runtime / "bin/wineserver"), "-w"],
+            ],
+        )
+
+    def test_prefix_completion_requires_wine_rpc_and_plugplay_services(self):
+        prefix = self.root / "prefix-completion"
+        (prefix / "drive_c/windows/system32").mkdir(parents=True)
+        (prefix / "user.reg").write_text("WINE REGISTRY Version 2\n", encoding="utf-8")
+        (prefix / "system.reg").write_text(
+            "WINE REGISTRY Version 2\n"
+            "[System\\\\ControlSet001\\\\Services\\\\MountMgr] 1\n",
+            encoding="utf-8",
+        )
+
+        self.assertFalse(_prefix_initialized(prefix))
+
+        (prefix / "system.reg").write_text(
+            "WINE REGISTRY Version 2\n"
+            "[System\\\\ControlSet001\\\\Services\\\\MountMgr] 1\n"
+            "[System\\\\ControlSet001\\\\Services\\\\PlugPlay] 1\n"
+            "[System\\\\ControlSet001\\\\Services\\\\RpcSs] 1\n",
+            encoding="utf-8",
+        )
+
+        self.assertTrue(_prefix_initialized(prefix))
+
+    def test_ngs_installer_uses_exact_vendor_command_and_verifies_flushed_state(self):
+        from msclassic.lockfile import load_versions
+
+        artifact = load_versions(REPO / "versions.lock")["wine"]
+        runtime = self.paths.tools / artifact.version
+        (runtime / "bin").mkdir(parents=True)
+        for name in ("wine", "wineserver", "wineboot", "regedit"):
+            tool = runtime / "bin" / name
+            tool.write_bytes(b"tool")
+            tool.chmod(0o700)
+        (runtime / ".msclassic-artifact.json").write_text(
+            json.dumps(
+                {
+                    "schema": 1,
+                    "name": artifact.name,
+                    "version": artifact.version,
+                    "digest": artifact.digest,
+                }
+            ),
+            encoding="utf-8",
+        )
+        ngs = (
+            self.paths.client
+            / "Maplestory_Classic_Data/Plugins/x86_64/grap/NGService.exe"
+        )
+        ngs.parent.mkdir(parents=True)
+        ngs.write_bytes(b"MZ")
+        self.paths.prefix.mkdir(parents=True)
+        (self.paths.prefix / "user.reg").write_text(
+            "WINE REGISTRY Version 2\n", encoding="utf-8"
+        )
+        (self.paths.prefix / "drive_c/windows/system32").mkdir(parents=True)
+        (self.paths.prefix / "system.reg").write_text(
+            "WINE REGISTRY Version 2\n"
+            "[System\\\\ControlSet001\\\\Services\\\\PlugPlay] 1\n"
+            "[System\\\\ControlSet001\\\\Services\\\\RpcSs] 1\n",
+            encoding="utf-8",
+        )
+
+        def fake_run(argv, **kwargs):
+            if argv == [str(runtime / "bin/wineserver"), "-w"]:
+                with (self.paths.prefix / "system.reg").open("a", encoding="utf-8") as stream:
+                    stream.write("[System\\\\ControlSet001\\\\Services\\\\NGS] 1\n")
+                broker = (
+                    self.paths.prefix
+                    / "drive_c/ProgramData/Nexon/NGS/NGService.exe"
+                )
+                broker.parent.mkdir(parents=True)
+                broker.write_bytes(b"MZ")
+            return subprocess.CompletedProcess(argv, 0)
+
+        with mock.patch("msclassic.installer.subprocess.run", side_effect=fake_run) as invoked:
+            _install_ngs_service(self.paths, ngs)
+
+        calls = invoked.call_args_list
+        self.assertEqual(
+            calls[0].args[0],
+            [str(runtime / "bin/wine"), str(ngs), "-install"],
+        )
+        self.assertEqual(calls[0].kwargs["cwd"], ngs.parent)
+        self.assertFalse(calls[0].kwargs["shell"])
+        self.assertEqual(calls[0].kwargs["env"]["WINEPREFIX"], str(self.paths.prefix))
+        self.assertEqual(
+            calls[0].kwargs["env"]["WINEDLLOVERRIDES"],
+            "mscoree,mshtml=",
+        )
+        self.assertEqual(
+            [call.args[0] for call in calls[1:]],
+            [
+                [str(runtime / "bin/wineserver"), "-k"],
+                [str(runtime / "bin/wineserver"), "-w"],
+            ],
+        )
+
+    def test_ngs_installer_rejects_success_exit_without_persistent_service_state(self):
+        from msclassic.lockfile import load_versions
+
+        artifact = load_versions(REPO / "versions.lock")["wine"]
+        runtime = self.paths.tools / artifact.version
+        (runtime / "bin").mkdir(parents=True)
+        for name in ("wine", "wineserver", "wineboot", "regedit"):
+            tool = runtime / "bin" / name
+            tool.write_bytes(b"tool")
+            tool.chmod(0o700)
+        (runtime / ".msclassic-artifact.json").write_text(
+            json.dumps(
+                {
+                    "schema": 1,
+                    "name": artifact.name,
+                    "version": artifact.version,
+                    "digest": artifact.digest,
+                }
+            ),
+            encoding="utf-8",
+        )
+        ngs = (
+            self.paths.client
+            / "Maplestory_Classic_Data/Plugins/x86_64/grap/NGService.exe"
+        )
+        ngs.parent.mkdir(parents=True)
+        ngs.write_bytes(b"MZ")
+        self.paths.prefix.mkdir(parents=True)
+        (self.paths.prefix / "user.reg").write_text(
+            "WINE REGISTRY Version 2\n", encoding="utf-8"
+        )
+        (self.paths.prefix / "drive_c/windows/system32").mkdir(parents=True)
+        (self.paths.prefix / "system.reg").write_text(
+            "WINE REGISTRY Version 2\n"
+            "[System\\\\ControlSet001\\\\Services\\\\PlugPlay] 1\n"
+            "[System\\\\ControlSet001\\\\Services\\\\RpcSs] 1\n",
+            encoding="utf-8",
+        )
+        completed = subprocess.CompletedProcess([], 0)
+
+        with mock.patch("msclassic.installer.subprocess.run", return_value=completed):
+            with self.assertRaises(InstallerError):
+                _install_ngs_service(self.paths, ngs)
 
     def test_rejects_unrecognized_runtime_artifacts(self):
         unknown = Artifact(
@@ -342,4 +560,3 @@ class InstallerTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

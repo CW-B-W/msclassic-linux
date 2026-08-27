@@ -64,6 +64,7 @@ class CliIntegrationTests(unittest.TestCase):
             "UnityPlayer.dll",
             "GameAssembly.dll",
             "Maplestory_Classic_Data/Plugins/x86_64/grap/grap-core64.aes",
+            "Maplestory_Classic_Data/Plugins/x86_64/grap/NGService.exe",
         ):
             path = source / relative
             path.parent.mkdir(parents=True, exist_ok=True)

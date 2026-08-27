@@ -10,6 +10,7 @@ from pathlib import Path
 from .approval import ensure_current_boot_approval
 from .doctor import collect_graphics_report
 from .lockfile import load_versions
+from .ngs import inspect_ngs_state
 from .paths import AppPaths
 from .protocol import LaunchRequest
 from .redaction import assert_export_safe
@@ -92,6 +93,10 @@ def run_authenticated(
             raise ActiveSessionError("a MapleStory Classic launch is already active") from exc
         ensure_current_boot_approval(paths, collector)
         _validate_runtime(paths)
+        if not inspect_ngs_state(paths).complete:
+            raise RunnerError(
+                "NGS service installation is incomplete; rerun the guest installer"
+            )
         environment, argv = build_wine_command(request, paths)
         _write_launch_status(paths, "starting")
         try:

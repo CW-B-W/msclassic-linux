@@ -16,6 +16,7 @@ from urllib.parse import urlsplit
 
 from .doctor import GraphicsReport, evaluate_launch_graphics
 from .lockfile import Artifact, load_versions, verify_file
+from .ngs import inspect_ngs_state
 from .paths import AppPaths
 from .platforms import PlatformAdapter, read_os_release, select_platform
 
@@ -26,6 +27,7 @@ REQUIRED_CLIENT_FILES = (
     "UnityPlayer.dll",
     "GameAssembly.dll",
     "Maplestory_Classic_Data/Plugins/x86_64/grap/grap-core64.aes",
+    "Maplestory_Classic_Data/Plugins/x86_64/grap/NGService.exe",
 )
 _REPO = Path(__file__).resolve().parents[2]
 
@@ -130,6 +132,16 @@ def build_install_plan(
 
     actions.append(InstallAction("initialize_prefix", destination=paths.prefix))
     actions.append(InstallAction("import_registry", destination=paths.prefix))
+    actions.append(
+        InstallAction(
+            "install_ngs",
+            source=(
+                paths.client
+                / "Maplestory_Classic_Data/Plugins/x86_64/grap/NGService.exe"
+            ),
+            destination=paths.prefix,
+        )
+    )
     return InstallPlan(tuple(actions), required_bytes)
 
 
@@ -228,6 +240,11 @@ def _execute_action(action: InstallAction, paths: AppPaths, registry_path: Path)
         if not registry_path.is_file():
             raise InstallerError("prefix registry file is unavailable")
         _run_runtime(paths, ["regedit", "/S", str(registry_path.resolve())])
+        return
+    if action.kind == "install_ngs":
+        if action.source is None:
+            raise InstallerError("invalid NGS installation action")
+        _install_ngs_service(paths, action.source)
         return
     raise InstallerError(f"unsupported install action: {action.kind}")
 
@@ -368,6 +385,7 @@ def _run_runtime(paths: AppPaths, arguments: list[str]) -> None:
         "PATH": f"{wine_root / 'bin'}:/usr/bin:/bin",
         "WINEPREFIX": str(paths.prefix),
         "WINEDEBUG": "-all",
+        "WINEDLLOVERRIDES": "mscoree,mshtml=",
         "LANG": "zh_TW.UTF-8",
         "LC_ALL": "zh_TW.UTF-8",
     }
@@ -394,6 +412,64 @@ def _run_runtime(paths: AppPaths, arguments: list[str]) -> None:
         raise InstallerError("pinned Wine prefix initialization failed") from exc
     if completed.returncode != 0:
         raise InstallerError("pinned Wine prefix initialization failed")
+    if arguments[0] == "wineboot":
+        _stop_runtime_server(wine_root, environment)
+        if not _prefix_initialized(paths.prefix):
+            raise InstallerError(
+                "Wine prefix initialization completed without persistent services"
+            )
+
+
+def _install_ngs_service(paths: AppPaths, executable: Path) -> None:
+    expected = (
+        paths.client
+        / "Maplestory_Classic_Data/Plugins/x86_64/grap/NGService.exe"
+    )
+    try:
+        matches_expected = executable.resolve() == expected.resolve()
+    except OSError as exc:
+        raise InstallerError("vendor NGS installer is unavailable") from exc
+    if not matches_expected or not executable.is_file():
+        raise InstallerError("vendor NGS installer is unavailable")
+    if not _prefix_initialized(paths.prefix):
+        raise InstallerError("Wine prefix service initialization is incomplete")
+
+    artifact = load_versions(_REPO / "versions.lock")["wine"]
+    tools = paths.tools.resolve()
+    wine_root = (paths.tools / artifact.version).resolve()
+    if not wine_root.is_relative_to(tools) or not _extraction_valid(wine_root, artifact):
+        raise InstallerError("pinned Wine runtime is unavailable")
+    wine = wine_root / "bin/wine"
+    if not wine.is_file() or not os.access(wine, os.X_OK):
+        raise InstallerError("pinned Wine runtime is unavailable")
+    environment = {
+        "HOME": str(paths.home),
+        "PATH": f"{wine_root / 'bin'}:/usr/bin:/bin",
+        "WINEPREFIX": str(paths.prefix),
+        "WINEDEBUG": "-all",
+        "WINEDLLOVERRIDES": "mscoree,mshtml=",
+        "LANG": "zh_TW.UTF-8",
+        "LC_ALL": "zh_TW.UTF-8",
+    }
+    try:
+        completed = subprocess.run(
+            [str(wine), str(executable), "-install"],
+            cwd=executable.parent,
+            shell=False,
+            env=environment,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=120,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise InstallerError("vendor NGS service installation failed") from exc
+    if completed.returncode != 0:
+        raise InstallerError("vendor NGS service installation failed")
+    _stop_runtime_server(wine_root, environment)
+    if not inspect_ngs_state(paths).complete:
+        raise InstallerError("vendor NGS service installation is incomplete")
 
 
 def _stop_runtime_server(wine_root: Path, environment: dict[str, str]) -> None:
@@ -417,11 +493,22 @@ def _stop_runtime_server(wine_root: Path, environment: dict[str, str]) -> None:
 
 
 def _prefix_initialized(prefix: Path) -> bool:
-    return (
-        (prefix / "system.reg").is_file()
+    system_registry = prefix / "system.reg"
+    if not (
+        system_registry.is_file()
         and (prefix / "user.reg").is_file()
         and (prefix / "drive_c/windows/system32").is_dir()
+    ):
+        return False
+    try:
+        registry = system_registry.read_text(encoding="utf-8")
+    except (OSError, UnicodeError):
+        return False
+    required_services = (
+        "[System\\\\ControlSet001\\\\Services\\\\PlugPlay]",
+        "[System\\\\ControlSet001\\\\Services\\\\RpcSs]",
     )
+    return all(service in registry for service in required_services)
 
 
 def _make_user_writable(root: Path) -> None:
@@ -547,4 +634,3 @@ def main(argv: list[str] | None = None) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

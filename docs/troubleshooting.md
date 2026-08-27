@@ -57,7 +57,29 @@ GE-Proton11-3 and GE-Proton11-5 were rejected during the investigation because t
 
 The launch status contains only a fixed stage and integer exit code. Authenticated arguments and the full URI are intentionally absent.
 
-## 6. Another launch or update is active
+## 6. Server selection closes with a security-module message
+
+If the client reaches server selection and shows `安全模組運作中` / `客戶端強制關閉(0)`, first check whether the normal GRAP process tree exists:
+
+```bash
+ps -eo pid,ppid,comm,args | grep -E \
+  'Maplestory_Classic|UnityCrashHandler64|NGService|grap-core64' | grep -v grep
+grep -F '[System\\ControlSet001\\Services\\RpcSs]' \
+  ~/.local/share/maplestory-classic/prefix-wine1110/system.reg
+grep -F '[System\\ControlSet001\\Services\\PlugPlay]' \
+  ~/.local/share/maplestory-classic/prefix-wine1110/system.reg
+grep -F '[System\\ControlSet001\\Services\\NGS]' \
+  ~/.local/share/maplestory-classic/prefix-wine1110/system.reg
+test -f ~/.local/share/maplestory-classic/prefix-wine1110/drive_c/ProgramData/Nexon/NGS/NGService.exe
+```
+
+`grap-core64.aes` is a normal x86-64 Windows PE executable despite its suffix. Do not `chmod +x` it, launch it with guessed arguments, create a fake service entry, or disable the security module. The game-shipped `grap64.dll` expects the Wine service manager to start `NGService.exe`, which verifies and launches GRAP with per-session arguments.
+
+Rerun the guest installer to complete the Wine service baseline and invoke the vendor's `NGService.exe -install` workflow. The installer suppresses optional Wine Mono/Gecko prompts during prefix setup and refuses a partial prefix instead of accepting registry files alone.
+
+See [the GRAP / NGS-X investigation](2026-08-27-grap-ngs-investigation.md) for the evidence and CyderBits comparison.
+
+## 7. Another launch or update is active
 
 The game and nxdl share a nonblocking mode-0600 lock. Exit the game normally. If the dedicated prefix is genuinely stuck:
 
@@ -67,7 +89,7 @@ msclassic stop --yes
 
 This does not stop unrelated Wine applications.
 
-## 7. Disk space is insufficient
+## 8. Disk space is insufficient
 
 Preview the exact requirement:
 
@@ -80,11 +102,11 @@ lsblk
 
 Increasing the virtual disk in Proxmox does not automatically enlarge the guest partition and filesystem. If `lsblk` shows a larger disk but `df` shows the old root size, finish the guest-side partition/filesystem expansion using the filesystem-appropriate tool and a backup. This is separate from VirGL and Wine.
 
-## 8. AnyDesk does not return after a display change
+## 9. AnyDesk does not return after a display change
 
 Use Proxmox WebUI console first. If the guest is unavailable, stop it in WebUI and restore the backup made before the display trial. Do not add GPU passthrough as a troubleshooting shortcut.
 
-## 9. Safe evidence for a report
+## 10. Safe evidence for a report
 
 Acceptable evidence includes PVE/QEMU versions, package versions, `glxinfo -B`, sanitized doctor JSON, display resolution, fixed launch status, and observations such as “window appeared” or “audio stuttered.”
 

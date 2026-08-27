@@ -58,6 +58,20 @@ class RunnerTests(unittest.TestCase):
         executable.parent.mkdir(parents=True)
         executable.write_bytes(b"MZ")
         executable.chmod(0o600)
+        self.paths.prefix.mkdir(parents=True)
+        (self.paths.prefix / "system.reg").write_text(
+            "WINE REGISTRY Version 2\n"
+            "[System\\\\ControlSet001\\\\Services\\\\PlugPlay] 1\n"
+            "[System\\\\ControlSet001\\\\Services\\\\RpcSs] 1\n"
+            "[System\\\\ControlSet001\\\\Services\\\\NGS] 1\n",
+            encoding="utf-8",
+        )
+        broker = (
+            self.paths.prefix
+            / "drive_c/ProgramData/Nexon/NGS/NGService.exe"
+        )
+        broker.parent.mkdir(parents=True)
+        broker.write_bytes(b"MZ")
         self.boot_id = Path("/proc/sys/kernel/random/boot_id").read_text(encoding="ascii").strip()
         self.paths.state.mkdir(parents=True)
         self.write_approval(self.boot_id)
@@ -190,6 +204,24 @@ class RunnerTests(unittest.TestCase):
         (self.wine_root / ".msclassic-artifact.json").write_text("{}", encoding="utf-8")
         with self.assertRaises(RunnerError):
             run_authenticated(LaunchRequest("2982", None, ("safe",)), self.paths)
+
+    def test_launch_refuses_incomplete_ngs_state_before_private_spawn(self):
+        (
+            self.paths.prefix
+            / "drive_c/ProgramData/Nexon/NGS/NGService.exe"
+        ).unlink()
+
+        with mock.patch("msclassic.runner.subprocess.run") as invoked:
+            with self.assertRaisesRegex(
+                RunnerError,
+                "NGS service installation is incomplete",
+            ):
+                run_authenticated(
+                    LaunchRequest("2982", None, ("private-value",)),
+                    self.paths,
+                )
+
+        invoked.assert_not_called()
 
     def test_handler_install_and_restore_cover_all_observed_schemes(self):
         current = {

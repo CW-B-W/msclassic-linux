@@ -10,10 +10,10 @@ This repository does not contain the game client, Wine archives, credentials, br
 - Rendering path: WineD3D → Mesa VirGL OpenGL.
 - No GPU passthrough.
 - Authenticated client launch and 1366×768 rendering validated on Lubuntu 24.04/PVE.
-- Character/map acceptance remains pending when the service is out of maintenance.
+- Server selection is reachable with the patched Wine candidate. A fresh complete prefix now contains the vendor-installed `NGS` service and broker; live `grap-core64.aes` and map-entry acceptance are pending the next authenticated launch.
 - Fedora, Arch Linux, native hardware, Wayland, and NVIDIA are roadmap targets, not supported claims.
 
-The live result is documented in [Successful launch — 2026-08-27](docs/2026-08-27-successful-launch.md). Character/map and multi-VM acceptance remain pending.
+The live result is documented in [Successful launch — 2026-08-27](docs/2026-08-27-successful-launch.md), and the security-service diagnosis and repair are tracked in [GRAP / NGS-X investigation — 2026-08-27](docs/2026-08-27-grap-ngs-investigation.md). Character/map and multi-VM acceptance remain pending.
 
 ## Quick start
 
@@ -60,6 +60,7 @@ msclassic uninstall            # retain client and prefix
 - [Adding a distribution or hardware profile](docs/adding-a-platform.md)
 - [Roadmap and expected porting effort](docs/roadmap.md)
 - [Successful launch record](docs/2026-08-27-successful-launch.md)
+- [GRAP / NGS-X investigation](docs/2026-08-27-grap-ngs-investigation.md)
 - [Design specification](docs/superpowers/specs/2026-08-27-ms-classic-linux-clean-project-design.md)
 
 The original macOS community workflow and compatibility research are credited in the successful-launch record. This repository is a Linux implementation; it does not redistribute CitrusGate, CyderBits, the game, or their runtime payloads.

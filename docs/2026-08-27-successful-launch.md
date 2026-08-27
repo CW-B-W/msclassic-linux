@@ -2,7 +2,7 @@
 
 ## Result
 
-MapleStory Classic accepted a live Beanfun GamePass login, started its Windows client on Lubuntu 24.04, rendered at 1366×768, passed the splash screen, and reached the in-game service/maintenance flow. The operator later closed the window normally. Scheduled maintenance prevented character selection and map entry, so this is a validated single-VM launch candidate rather than a completed gameplay or multi-VM capacity result.
+MapleStory Classic accepted a live Beanfun GamePass login, started its Windows client on Lubuntu 24.04, rendered at 1366×768, passed the splash screen, and reached the in-game service/maintenance flow. The operator later closed the window normally. A post-maintenance run subsequently reached server selection but exposed a separate NGS-X bootstrap failure: `grap-core64.aes` did not start and the client showed the security-module forced-close condition. This remains a validated single-VM launch candidate rather than a completed gameplay or multi-VM capacity result.
 
 No GPU passthrough, SR-IOV, Windows VM, authentication bypass, anti-cheat bypass, saved credential, or copied browser profile was used.
 
@@ -96,6 +96,8 @@ This Linux project reimplements only the needed concepts for freedesktop MIME ha
 | Unity window at 1366×768 | pass |
 | Reached game service/maintenance flow | pass |
 | Character selection and map entry | pending after maintenance |
+| Offline NGS service registration and installed broker | pass in a fresh complete prefix |
+| Live `grap-core64.aes` lifecycle | pending authenticated relaunch |
 | 15-minute gameplay, exit, relaunch | pending |
 | First launch after reboot with automatic doctor | pending final live confirmation |
 | Two concurrent VMs | pending after single-VM gameplay |
