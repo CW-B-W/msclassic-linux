@@ -1,0 +1,38 @@
+schema = 1
+status = "single-vm-launch-candidate"
+
+[scope]
+supported_pve = ["9.1", "9.2"]
+supported_guest = "Lubuntu 24.04 X11"
+passthrough = false
+validated_vm_count = 1
+target_vm_count = "2-4 after concurrency validation"
+
+[host]
+render_node = "/dev/dri/renderD128"
+render_server = "/usr/libexec/virgl_render_server"
+packages = ["virgl-server", "mesa-vulkan-drivers"]
+gpu_driver = "i915"
+
+[vm]
+firmware = "ovmf"
+machine = "q35"
+display = "virtio-gl"
+hostmem = "2G"
+blob = true
+venus = true
+minimum_width = 1280
+minimum_height = 720
+validated_game_width = 1366
+validated_game_height = 768
+
+[guest]
+platform = "lubuntu-24.04"
+session = "x11"
+opengl_renderer_contains = "virgl"
+game_renderer = "wined3d-opengl"
+vulkan_role = "diagnostic-only"
+wine = "wine-11.10-staging-tkg-amd64-wow64"
+prefix = "prefix-wine1110"
+game_code = "2982"
+
