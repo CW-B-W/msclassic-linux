@@ -14,17 +14,14 @@ The hard compatibility questions are already answered for the validated VM: offi
 
 Near-term milestones:
 
-1. Complete a supervised live MapleStory trial with the same-prefix Windows
-   debugger that passed the isolated 10-minute probe.
-2. Confirm a clean recovery/relaunch after closing a debugger-attached
-   client, and a website launch after guest reboot without manually invoking
-   doctor.
-3. Reproduce on VM 2 and run two VMs concurrently.
-4. Test VM 3 and VM 4 sequentially if host capacity remains acceptable.
-5. Validate Sunshine/Moonlight; keep RustDesk excluded from gameplay unless its
+1. Confirm a website relaunch after closing the same-prefix Windows debugger,
+   and a website launch after guest reboot without manually invoking doctor.
+2. Reproduce on VM 2 and run two VMs concurrently.
+3. Test VM 3 and VM 4 sequentially if host capacity remains acceptable.
+4. Validate Sunshine/Moonlight; keep RustDesk excluded from gameplay unless its
    Linux held-key delivery is fixed upstream.
-6. Add a native-Lubuntu graphics profile.
-7. Make the patched Wine build path-independent.
-8. Add Fedora, then Arch adapters based on real machines—not speculative package lists.
+5. Add a native-Lubuntu graphics profile.
+6. Make the patched Wine build path-independent.
+7. Add Fedora, then Arch adapters based on real machines—not speculative package lists.
 
 This project will not add GPU passthrough as the default scaling strategy, automate Beanfun credentials, clone browser sessions, or weaken the protocol/privacy boundary.

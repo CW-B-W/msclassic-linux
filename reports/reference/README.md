@@ -1,6 +1,6 @@
 # Reference evidence
 
-This directory is reserved for reviewed, non-sensitive reference fingerprints and reports. The 2026-08-27 result is a single-VM launch candidate, not yet a gameplay or multi-VM reference, so no fingerprint is promoted here yet.
+This directory is reserved for reviewed, non-sensitive reference fingerprints and reports. The first VM has passed live gameplay, Chinese input, and the scoped Windows-debugger compatibility trial. It has not yet passed clean-boot/relaunch and multi-VM acceptance, so no platform fingerprint is promoted here yet.
 
 A candidate can be promoted only after:
 

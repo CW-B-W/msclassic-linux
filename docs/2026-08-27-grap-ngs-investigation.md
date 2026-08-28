@@ -130,6 +130,12 @@ attached for 10 minutes, and detached with zero probe failures. This supports a 
 conflict, not a GRAP attribution. See
 [Debugger compatibility](debugger-compatibility.md).
 
+A subsequent supervised live MapleStory trial confirmed the boundary. Windows
+CE debugger interface 1 remained attached for 10 minutes, completed one
+content-neutral read-only scan, remained stable for five more minutes, and
+detached cleanly. GRAP stayed alive and the operator confirmed normal gameplay
+after both scan and detach. Breakpoints and memory modification were not tested.
+
 ## CyderBits comparison
 
 CyderBits does not manually launch `grap-core64.aes`. Its recorded successful path is:
@@ -176,11 +182,10 @@ Wine embeds absolute source paths in NTDLL, so profile v1 pins `/home/ubuntu/.ca
 
 Each trial changes one variable and records before/after evidence:
 
-1. Confirm the same-prefix Windows debugger with a supervised live game trial.
-2. Exit normally and relaunch from the website; separately confirm recovery
+1. Exit normally and relaunch from the website; separately confirm recovery
    after a failed debugger-attached process is fully stopped.
-3. Reboot the guest and repeat without manually running doctor.
-4. Reproduce on VM 2 before increasing concurrency.
+2. Reboot the guest and repeat without manually running doctor.
+3. Reproduce on VM 2 before increasing concurrency.
 
 ## Rejected shortcuts
 

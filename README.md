@@ -21,9 +21,13 @@ This repository does not contain the game client, Wine archives, credentials, br
 - An operator-observed game-only session remained stable for about four hours.
 - Chinese input is validated in-game. The launcher preserves the active Fcitx
   5 environment so Wine's X11 input context can use the desktop IME.
+- Authorized debugger compatibility is validated for Windows Cheat Engine 7.5
+  in the same Wine prefix: ordinary Windows debugger attachment, a
+  content-neutral read-only scan, clean detach, and continued gameplay passed.
+  Native Linux CE attachment remains unsupported.
 - Fedora, Arch Linux, native hardware, Wayland, and NVIDIA are roadmap targets, not supported claims.
 
-The live result is documented in [Successful launch — 2026-08-27](docs/2026-08-27-successful-launch.md), and the security-service diagnosis and repair are tracked in [GRAP / NGS-X investigation — 2026-08-27](docs/2026-08-27-grap-ngs-investigation.md). Live Windows-debugger, clean post-debugger recovery/relaunch, reboot, and multi-VM acceptance remain pending.
+The live result is documented in [Successful launch — 2026-08-27](docs/2026-08-27-successful-launch.md), and the security-service diagnosis and repair are tracked in [GRAP / NGS-X investigation — 2026-08-27](docs/2026-08-27-grap-ngs-investigation.md). Website relaunch after a debugger trial, reboot, and multi-VM acceptance remain pending.
 
 ## Quick start
 
@@ -79,6 +83,7 @@ authorized to inspect. Native Linux debuggers that attach to Wine with
 - [Lubuntu 24.04 / PVE quick start](docs/quick-start-lubuntu-pve.md)
 - [Troubleshooting](docs/troubleshooting.md)
 - [Debugger compatibility](docs/debugger-compatibility.md)
+- [Windows debugger validation record](docs/2026-08-28-debugger-validation.md)
 - [Adding a distribution or hardware profile](docs/adding-a-platform.md)
 - [Roadmap and expected porting effort](docs/roadmap.md)
 - [Successful launch record](docs/2026-08-27-successful-launch.md)

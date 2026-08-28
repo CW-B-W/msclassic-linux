@@ -81,9 +81,9 @@ and a Windows Cheat Engine 7.5 lab copy for the same-prefix case. The Windows
 archive was used only for diagnosis, was not executed as an installer, and is
 not part of this repository. Its recorded SHA-256 was
 `77ba051fc39d2b2c03d23799d4124617633e8e0a9b906ed91bb8186c1a30f88d`.
-Because the versions differ, the result validates the same-prefix technique
-and root-cause model; an operator confirmation with their chosen Windows CE
-build and the live game remains required.
+Because the versions differ, the isolated result initially validated the
+same-prefix technique and root-cause model. A subsequent supervised live-game
+trial with the same Windows CE 7.5 build is recorded below.
 
 The exact probe source is
 [`diagnostics/suspend-context-probe.c`](../diagnostics/suspend-context-probe.c).
@@ -100,6 +100,55 @@ log reports only its own PID, test-region address, cycle timing, worker index,
 and Windows error code. A `context_failed` line with `code=5` is the reproduced
 native-debugger failure. Delete or retain the lab prefix according to your
 normal test-data policy; the project never removes it automatically.
+
+## Supervised live-game validation
+
+On 2026-08-28, the operator launched Windows CE 7.5 through `msclassic
+debugger`, selected only `Maplestory_Classic.exe`, and started CE debugger
+interface `1`, the ordinary Windows debugger:
+
+```lua
+debugProcess(1)
+print(debug_isDebugging(), debug_getCurrentDebuggerInterface())
+```
+
+The controlled sequence and results were:
+
+1. Ten minutes attached with no scan or breakpoint: MapleStory, GRAP, and CE
+   remained alive; no fatal dialog; memory PSI stayed zero.
+2. One exact four-byte scan for the content-neutral constant `123456789`: no
+   result was selected or used.
+3. Five minutes after the scan: all processes remained alive, the operator
+   confirmed normal movement/attack/gameplay, and memory PSI stayed zero.
+4. `detachIfPossible()` returned the debugger interface to nil. MapleStory and
+   GRAP remained alive for a further two minutes, and gameplay remained normal.
+
+The private local audit records use these IDs:
+
+```text
+reports/candidates/20260828-094415-windows-ce-live-no-action/
+reports/candidates/20260828-095139-windows-ce-live-readonly-scan/
+reports/candidates/20260828-095951-windows-ce-live-detach/
+```
+
+Candidate exports are ignored by Git by design. The reviewed, secret-scanned
+summary committed to this repository is
+[Windows debugger compatibility validation — 2026-08-28](2026-08-28-debugger-validation.md).
+
+This validates attach, content-neutral read-only scanning, detach, and continued
+gameplay for that exact CE build and runtime. It does not validate breakpoints,
+watchpoints, memory writes, value freezing, or modifying an online game. Those
+operations remain outside the accepted compatibility result.
+
+For an unambiguous detach status in CE's Lua Engine:
+
+```lua
+detachIfPossible()
+print("debugging=" .. tostring(debug_isDebugging()))
+print("interface=" .. tostring(debug_getCurrentDebuggerInterface()))
+```
+
+Expected after detach is `debugging=false` and `interface=nil`.
 
 ## Recovery after a fatal debugger trial
 

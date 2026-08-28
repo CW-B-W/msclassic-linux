@@ -4,7 +4,7 @@
 
 MapleStory Classic accepted a live Beanfun GamePass login, started its Windows client on Lubuntu 24.04, rendered at 1366×768, selected a character, and entered a live map. The repaired Wine service prefix started the vendor `NGService.exe`; it spawned `grap-core64.aes`, and the security module no longer forced the client closed. MapleStory, GRAP core, and Unity Crash Handler remained alive together through the observation period.
 
-The character moved with held arrow keys through both Proxmox noVNC and AnyDesk. RustDesk alone reduced held arrow input to ineffective taps on the Linux guest, although the same RustDesk client worked with the Windows reference VM. This isolates that symptom to RustDesk's Linux-host input path, not MapleStory or Wine. A later game-only session remained stable for about four hours. On 2026-08-28, Chinese composition was confirmed in MapleStory after the launcher began preserving the Fcitx/XIM environment. Live Windows-debugger, clean post-debugger recovery/relaunch, post-reboot launch, and multi-VM capacity remain pending.
+The character moved with held arrow keys through both Proxmox noVNC and AnyDesk. RustDesk alone reduced held arrow input to ineffective taps on the Linux guest, although the same RustDesk client worked with the Windows reference VM. This isolates that symptom to RustDesk's Linux-host input path, not MapleStory or Wine. A later game-only session remained stable for about four hours. On 2026-08-28, Chinese composition was confirmed in MapleStory after the launcher began preserving the Fcitx/XIM environment. The same day, Windows CE 7.5 in the game prefix completed an ordinary debugger attach, content-neutral read-only scan, clean detach, and continued gameplay without the native Linux CE fatal error. Website relaunch after debugger use, post-reboot launch, and multi-VM capacity remain pending.
 
 No GPU passthrough, SR-IOV, Windows VM, authentication bypass, anti-cheat bypass, saved credential, or copied browser profile was used.
 
@@ -123,7 +123,10 @@ This Linux project reimplements only the needed concepts for freedesktop MIME ha
 | Fcitx/XIM environment propagation and in-game Chinese composition | pass |
 | Native Linux `ptrace` debugger attachment | fail; incompatible with Wine thread-context handling |
 | Same-prefix Windows debugger probe | pass: scan, 10-minute attach, clean detach, zero probe failures |
-| Clean post-debugger recovery and relaunch | pending |
+| Live same-prefix Windows debugger attach, read-only scan, detach | pass |
+| Continued gameplay after debugger detach | pass |
+| Breakpoints, watchpoints, or memory modification | not validated |
+| Website relaunch after debugger use | pending |
 | First launch after reboot with automatic doctor | pending final live confirmation |
 | Two concurrent VMs | pending after single-VM gameplay |
 

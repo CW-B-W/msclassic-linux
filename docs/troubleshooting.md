@@ -174,6 +174,11 @@ For software you are authorized to inspect, follow
 inside the exact MapleStory Wine prefix. Do not use debugging to disable,
 patch, conceal from, or bypass GRAP/NGS-X.
 
+The 2026-08-28 supervised acceptance used Windows CE debugger interface 1. It
+passed a 10-minute idle attachment, one content-neutral read-only scan, a
+five-minute post-scan observation, clean detach, and continued gameplay. This
+does not validate breakpoints, watchpoints, or memory modification.
+
 ## 13. Safe evidence for a report
 
 Acceptable evidence includes PVE/QEMU versions, package versions, `glxinfo -B`, sanitized doctor JSON, display resolution, fixed launch status, and observations such as “window appeared” or “audio stuttered.”
