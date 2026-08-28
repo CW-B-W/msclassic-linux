@@ -6,6 +6,7 @@ from pathlib import Path
 
 from msclassic.input_mode import (
     InputModeStatus,
+    _session_supported,
     _transform_lxqt,
     _transform_openbox,
     activate_game_input,
@@ -135,7 +136,7 @@ class InputModeLifecycleTests(unittest.TestCase):
             mock.patch(
                 "msclassic.input_mode.subprocess.run",
                 return_value=subprocess.CompletedProcess([], 0),
-            ),
+            ) as invoked,
         ):
             active = activate_game_input(self.paths, self.environment)
             restored = restore_game_input(self.paths, self.environment)
@@ -145,6 +146,18 @@ class InputModeLifecycleTests(unittest.TestCase):
         self.assertEqual(self.openbox.read_bytes(), before_openbox)
         self.assertEqual(self.lxqt.read_bytes(), before_lxqt)
         self.assertFalse((self.paths.state / "input-profile/active.json").exists())
+        self.assertIn(
+            mock.call(
+                ["pgrep", "-f", "^/usr/bin/lxqt-globalkeysd( |$)"],
+                shell=False,
+                env=self.environment,
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                check=False,
+            ),
+            invoked.call_args_list,
+        )
 
     def test_status_reports_inactive_without_a_transaction(self):
         status = game_input_status(self.paths, self.environment)
@@ -262,6 +275,26 @@ class InputModeLifecycleTests(unittest.TestCase):
                 ).state,
                 "unavailable",
             )
+
+    def test_session_check_uses_full_command_for_lxqt_globalkeys(self):
+        with mock.patch(
+            "msclassic.input_mode.subprocess.run",
+            return_value=subprocess.CompletedProcess([], 0),
+        ) as invoked:
+            self.assertTrue(_session_supported(self.environment))
+
+        self.assertIn(
+            mock.call(
+                ["pgrep", "-f", "^/usr/bin/lxqt-globalkeysd( |$)"],
+                shell=False,
+                env=self.environment,
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                check=False,
+            ),
+            invoked.call_args_list,
+        )
 
 
 if __name__ == "__main__":

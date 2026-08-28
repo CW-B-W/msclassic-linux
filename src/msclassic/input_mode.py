@@ -151,7 +151,9 @@ def _session_supported(environment: Mapping[str, str]) -> bool:
         or not environment.get("XDG_RUNTIME_DIR")
     ):
         return False
-    return all(_command_ok(["pgrep", "-x", process], environment) for process in ("openbox", "lxqt-globalkeysd"))
+    return _command_ok(["pgrep", "-x", "openbox"], environment) and _command_ok(
+        ["pgrep", "-f", "^/usr/bin/lxqt-globalkeysd( |$)"], environment
+    )
 
 
 def _command_ok(argv: list[str], environment: Mapping[str, str]) -> bool:
@@ -174,7 +176,7 @@ def _reload_desktop(environment: Mapping[str, str], *, allow_failure: bool = Fal
     commands = (
         ["openbox", "--reconfigure"],
         ["systemctl", "--user", "restart", _LXQT_SERVICE],
-        ["pgrep", "-x", "lxqt-globalkeysd"],
+        ["pgrep", "-f", "^/usr/bin/lxqt-globalkeysd( |$)"],
     )
     for argv in commands:
         if not _command_ok(argv, environment) and not allow_failure:
