@@ -14,8 +14,9 @@ The hard compatibility questions are already answered for the validated VM: offi
 
 Near-term milestones:
 
-1. Confirm Chinese composition in MapleStory after the Fcitx/XIM environment fix.
-2. Confirm a clean recovery/relaunch after closing a failed debugger-attached
+1. Complete a supervised live MapleStory trial with the same-prefix Windows
+   debugger that passed the isolated 10-minute probe.
+2. Confirm a clean recovery/relaunch after closing a debugger-attached
    client, and a website launch after guest reboot without manually invoking
    doctor.
 3. Reproduce on VM 2 and run two VMs concurrently.

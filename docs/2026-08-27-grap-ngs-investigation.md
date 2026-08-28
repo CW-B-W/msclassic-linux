@@ -176,8 +176,7 @@ Wine embeds absolute source paths in NTDLL, so profile v1 pins `/home/ubuntu/.ca
 
 Each trial changes one variable and records before/after evidence:
 
-1. Confirm Chinese composition after the launcher begins forwarding Fcitx/XIM
-   environment variables.
+1. Confirm the same-prefix Windows debugger with a supervised live game trial.
 2. Exit normally and relaunch from the website; separately confirm recovery
    after a failed debugger-attached process is fully stopped.
 3. Reboot the guest and repeat without manually running doctor.

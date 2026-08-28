@@ -194,7 +194,7 @@ printf 'XMODIFIERS=%s\nGTK_IM_MODULE=%s\nQT_IM_MODULE=%s\n' \
 The expected values are `@im=fcitx`, `fcitx`, and `fcitx`. The launcher passes
 these variables into Wine; it does not store an input-method choice or account
 data. This path is verified with a Wine XIM probe, while live Chinese
-composition in MapleStory remains an acceptance item.
+composition in MapleStory was confirmed on 2026-08-28.
 
 ## 7. Launch through the official website
 

@@ -19,11 +19,11 @@ This repository does not contain the game client, Wine archives, credentials, br
   gameplay on this Linux guest because its held-arrow delivery was reduced to
   taps; this did not occur on the Windows reference VM.
 - An operator-observed game-only session remained stable for about four hours.
-- The launcher now preserves the active Fcitx 5 environment for Wine/XIM.
-  Chinese composition needs confirmation on the next authenticated launch.
+- Chinese input is validated in-game. The launcher preserves the active Fcitx
+  5 environment so Wine's X11 input context can use the desktop IME.
 - Fedora, Arch Linux, native hardware, Wayland, and NVIDIA are roadmap targets, not supported claims.
 
-The live result is documented in [Successful launch — 2026-08-27](docs/2026-08-27-successful-launch.md), and the security-service diagnosis and repair are tracked in [GRAP / NGS-X investigation — 2026-08-27](docs/2026-08-27-grap-ngs-investigation.md). Chinese input, clean post-debugger recovery/relaunch, reboot, and multi-VM acceptance remain pending.
+The live result is documented in [Successful launch — 2026-08-27](docs/2026-08-27-successful-launch.md), and the security-service diagnosis and repair are tracked in [GRAP / NGS-X investigation — 2026-08-27](docs/2026-08-27-grap-ngs-investigation.md). Live Windows-debugger, clean post-debugger recovery/relaunch, reboot, and multi-VM acceptance remain pending.
 
 ## Quick start
 
