@@ -10,6 +10,7 @@ from pathlib import Path
 from unittest import mock
 
 from msclassic.doctor import GraphicsReport
+from msclassic.input_mode import InputModeStatus
 from msclassic.lockfile import load_versions
 from msclassic.paths import AppPaths
 from msclassic.protocol import LaunchRequest
@@ -80,8 +81,30 @@ class RunnerTests(unittest.TestCase):
             "msclassic.runner.patched_runtime_valid", return_value=True
         )
         self.runtime_validation.start()
+        self.input_patches = [
+            mock.patch(
+                "msclassic.runner.deactivate_fcitx",
+                return_value=InputModeStatus("unavailable", "Fcitx is unavailable"),
+            ),
+            mock.patch(
+                "msclassic.runner.activate_game_input",
+                return_value=InputModeStatus(
+                    "unavailable", "Lubuntu X11 input profile is unavailable"
+                ),
+            ),
+            mock.patch(
+                "msclassic.runner.restore_game_input",
+                return_value=InputModeStatus(
+                    "inactive", "No game input profile is active"
+                ),
+            ),
+        ]
+        for patch in self.input_patches:
+            patch.start()
 
     def tearDown(self):
+        for patch in reversed(self.input_patches):
+            patch.stop()
         self.runtime_validation.stop()
         self.temp.cleanup()
 
@@ -111,7 +134,9 @@ class RunnerTests(unittest.TestCase):
             "DISPLAY": ":0",
             "XAUTHORITY": "/run/user/1000/xauth",
             "DBUS_SESSION_BUS_ADDRESS": "unix:path=/run/user/1000/bus",
+            "XDG_CONFIG_HOME": "/home/example/.config",
             "XDG_RUNTIME_DIR": "/run/user/1000",
+            "XDG_SESSION_TYPE": "x11",
             "PULSE_SERVER": "unix:/run/pulse/native",
             "PIPEWIRE_REMOTE": "pipewire-0",
             "XMODIFIERS": "@im=fcitx",
@@ -141,6 +166,8 @@ class RunnerTests(unittest.TestCase):
         self.assertEqual(env.get("XMODIFIERS"), "@im=fcitx")
         self.assertEqual(env.get("GTK_IM_MODULE"), "fcitx")
         self.assertEqual(env.get("QT_IM_MODULE"), "fcitx")
+        self.assertEqual(env.get("XDG_CONFIG_HOME"), "/home/example/.config")
+        self.assertEqual(env.get("XDG_SESSION_TYPE"), "x11")
         self.assertNotIn("WINEDLLOVERRIDES", env)
         self.assertNotIn("SECRET_FROM_BROWSER", env)
 
@@ -203,6 +230,56 @@ class RunnerTests(unittest.TestCase):
             {"schema": 1, "stage": "exited", "exit_code": 23},
         )
         self.assertNotIn("private-value", status_path.read_text())
+
+    def test_authenticated_launch_prepares_input_and_restores_after_wine(self):
+        events = []
+
+        def deactivate(_environment):
+            events.append("fcitx")
+            return InputModeStatus("prepared", "Fcitx was deactivated")
+
+        def activate(_paths, _environment):
+            events.append("activate")
+            return InputModeStatus("active", "Temporary game input profile is active")
+
+        def wine(_argv, **_kwargs):
+            events.append("wine")
+            return subprocess.CompletedProcess([], 0)
+
+        def restore(_paths, _environment):
+            events.append("restore")
+            return InputModeStatus("inactive", "Game input profile was restored")
+
+        with (
+            mock.patch("msclassic.runner.deactivate_fcitx", side_effect=deactivate),
+            mock.patch("msclassic.runner.activate_game_input", side_effect=activate),
+            mock.patch("msclassic.runner.subprocess.run", side_effect=wine),
+            mock.patch("msclassic.runner.restore_game_input", side_effect=restore),
+        ):
+            result = run_authenticated(
+                LaunchRequest("2982", None, ("safe",)),
+                self.paths,
+            )
+
+        self.assertEqual(result, 0)
+        self.assertEqual(events, ["fcitx", "activate", "wine", "restore"])
+
+    def test_authenticated_launch_restores_input_when_wine_spawn_fails(self):
+        active = InputModeStatus("active", "Temporary game input profile is active")
+
+        with (
+            mock.patch("msclassic.runner.deactivate_fcitx"),
+            mock.patch("msclassic.runner.activate_game_input", return_value=active),
+            mock.patch("msclassic.runner.subprocess.run", side_effect=OSError("spawn failed")),
+            mock.patch("msclassic.runner.restore_game_input") as restored,
+        ):
+            with self.assertRaises(OSError):
+                run_authenticated(
+                    LaunchRequest("2982", None, ("safe",)),
+                    self.paths,
+                )
+
+        restored.assert_called_once()
 
     def test_duplicate_launch_is_refused_immediately(self):
         lock_path = self.paths.state / "launch.lock"

@@ -21,6 +21,7 @@ from .approval import (
 from .doctor import collect_graphics_report, evaluate_launch_graphics
 from .debugger import DebuggerError, run_windows_ce
 from .installer import InstallerError, build_install_plan, main as installer_main, perform_install
+from .input_mode import InputModeError, game_input_status, restore_game_input
 from .lockfile import LockfileError, load_versions
 from .paths import AppPaths
 from .platforms import UnsupportedPlatformError, read_os_release, select_platform
@@ -76,6 +77,7 @@ def main(argv: list[str] | None = None) -> int:
     except (
         GraphicsApprovalError,
         DebuggerError,
+        InputModeError,
         InstallerError,
         RunnerError,
         TrialError,
@@ -158,6 +160,17 @@ def _dispatch(args: argparse.Namespace, paths: AppPaths) -> int:
         request = parse_launch_uri(args.uri)
         result = run_authenticated(request, paths)
         return EXIT_SUCCESS if result == 0 else EXIT_EXTERNAL_COMMAND
+
+    if args.command == "input":
+        if args.input_command == "status":
+            payload = game_input_status(paths, os.environ).to_json()
+        elif args.input_command == "restore":
+            payload = restore_game_input(paths, os.environ).to_json()
+        else:
+            raise ValueError("unsupported input command")
+        assert_export_safe(payload)
+        print(json.dumps(payload, sort_keys=True))
+        return EXIT_SUCCESS
 
     if args.command == "update":
         artifact = load_versions(REPO / "versions.lock")["nxdl"]
@@ -416,6 +429,10 @@ def _parser() -> argparse.ArgumentParser:
     client_mode.add_argument("--download-client", action="store_true")
     handler = subcommands.add_parser("handle-url")
     handler.add_argument("uri")
+    input_command = subcommands.add_parser("input")
+    input_subcommands = input_command.add_subparsers(dest="input_command", required=True)
+    input_subcommands.add_parser("status")
+    input_subcommands.add_parser("restore")
     stop = subcommands.add_parser("stop")
     stop.add_argument("--yes", action="store_true")
     debugger = subcommands.add_parser("debugger")

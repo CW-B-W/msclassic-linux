@@ -9,6 +9,12 @@ from pathlib import Path
 
 from .approval import ensure_current_boot_approval
 from .doctor import collect_graphics_report
+from .input_mode import (
+    InputModeError,
+    activate_game_input,
+    deactivate_fcitx,
+    restore_game_input,
+)
 from .lockfile import load_versions
 from .ngs import inspect_ngs_state
 from .paths import AppPaths
@@ -36,7 +42,9 @@ _PASSTHROUGH_ENV = (
     "DISPLAY",
     "XAUTHORITY",
     "DBUS_SESSION_BUS_ADDRESS",
+    "XDG_CONFIG_HOME",
     "XDG_RUNTIME_DIR",
+    "XDG_SESSION_TYPE",
     "PULSE_SERVER",
     "PIPEWIRE_REMOTE",
     "XMODIFIERS",
@@ -102,23 +110,32 @@ def run_authenticated(
                 "NGS service installation is incomplete; rerun the guest installer"
             )
         environment, argv = build_wine_command(request, paths)
-        _write_launch_status(paths, "starting")
         try:
-            completed = subprocess.run(
-                list(argv),
-                shell=False,
-                env=environment,
-                stdin=subprocess.DEVNULL,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                start_new_session=True,
-                check=False,
-            )
-        except OSError:
-            _write_launch_status(paths, "spawn-failed")
-            raise
-        _write_launch_status(paths, "exited", completed.returncode)
-        return completed.returncode
+            deactivate_fcitx(environment)
+            profile = activate_game_input(paths, environment)
+        except InputModeError:
+            profile = None
+        try:
+            _write_launch_status(paths, "starting")
+            try:
+                completed = subprocess.run(
+                    list(argv),
+                    shell=False,
+                    env=environment,
+                    stdin=subprocess.DEVNULL,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    start_new_session=True,
+                    check=False,
+                )
+            except OSError:
+                _write_launch_status(paths, "spawn-failed")
+                raise
+            _write_launch_status(paths, "exited", completed.returncode)
+            return completed.returncode
+        finally:
+            if profile is not None and profile.state == "active":
+                restore_game_input(paths, environment)
 
 
 def _write_launch_status(paths: AppPaths, stage: str, exit_code: int | None = None) -> None:

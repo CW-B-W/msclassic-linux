@@ -11,6 +11,7 @@ from unittest import mock
 from msclassic.approval import GraphicsApprovalError
 from msclassic.cli import _install_application, main
 from msclassic.doctor import GraphicsReport
+from msclassic.input_mode import InputModeStatus
 from msclassic.paths import AppPaths
 from msclassic.updater import UpdateCheck
 
@@ -108,6 +109,25 @@ class CliIntegrationTests(unittest.TestCase):
 
         self.assertEqual(code, 0)
         self.assertEqual(launched.call_args.args[0].arguments, ("alpha", "beta"))
+
+    def test_input_status_prints_safe_json(self):
+        status = InputModeStatus("inactive", "No game input profile is active")
+        with mock.patch("msclassic.cli.game_input_status", return_value=status):
+            code, output, error = self.invoke(["input", "status"])
+
+        self.assertEqual(code, 0)
+        self.assertEqual(error, "")
+        self.assertEqual(json.loads(output), status.to_json())
+
+    def test_input_restore_delegates_to_profile_manager(self):
+        status = InputModeStatus("inactive", "Game input profile was restored")
+        with mock.patch("msclassic.cli.restore_game_input", return_value=status) as restored:
+            code, output, error = self.invoke(["input", "restore"])
+
+        self.assertEqual(code, 0)
+        self.assertEqual(error, "")
+        self.assertEqual(json.loads(output), status.to_json())
+        restored.assert_called_once()
 
     def test_handler_failure_uses_fixed_notification_and_redacted_error(self):
         private_uri = "nexonplug://?game=2982&passarg=private-browser-value"
