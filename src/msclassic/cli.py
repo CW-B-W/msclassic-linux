@@ -19,6 +19,7 @@ from .approval import (
     write_graphics_approval,
 )
 from .doctor import collect_graphics_report, evaluate_launch_graphics
+from .debugger import DebuggerError, run_windows_ce
 from .installer import InstallerError, build_install_plan, main as installer_main, perform_install
 from .lockfile import LockfileError, load_versions
 from .paths import AppPaths
@@ -74,6 +75,7 @@ def main(argv: list[str] | None = None) -> int:
         return EXIT_CHECKSUM
     except (
         GraphicsApprovalError,
+        DebuggerError,
         InstallerError,
         RunnerError,
         TrialError,
@@ -170,6 +172,10 @@ def _dispatch(args: argparse.Namespace, paths: AppPaths) -> int:
             if not isinstance(result, int) or result == 0
             else EXIT_EXTERNAL_COMMAND
         )
+
+    if args.command == "debugger":
+        result = run_windows_ce(args.windows_ce, paths)
+        return EXIT_SUCCESS if result == 0 else EXIT_EXTERNAL_COMMAND
 
     if args.command == "trial":
         return _trial(args, paths)
@@ -353,6 +359,12 @@ def _install_application(paths: AppPaths) -> None:
     ignore = shutil.ignore_patterns("__pycache__", "*.pyc", "*.pyo")
     shutil.copytree(REPO / "src/msclassic", temporary_root / "src/msclassic", ignore=ignore)
     shutil.copytree(REPO / "desktop", temporary_root / "desktop")
+    (temporary_root / "scripts").mkdir(mode=0o700)
+    shutil.copy2(
+        REPO / "scripts/build-patched-wine.sh",
+        temporary_root / "scripts/build-patched-wine.sh",
+    )
+    shutil.copytree(REPO / "patches", temporary_root / "patches")
     shutil.copytree(REPO / "platforms", temporary_root / "platforms", ignore=ignore)
     shutil.copyfile(REPO / "versions.lock", temporary_root / "versions.lock")
     if installed_root.exists():
@@ -396,6 +408,8 @@ def _parser() -> argparse.ArgumentParser:
     handler.add_argument("uri")
     stop = subcommands.add_parser("stop")
     stop.add_argument("--yes", action="store_true")
+    debugger = subcommands.add_parser("debugger")
+    debugger.add_argument("--windows-ce", type=Path, required=True)
     update = subcommands.add_parser("update")
     update.add_argument("--apply", action="store_true")
     trial = subcommands.add_parser("trial")

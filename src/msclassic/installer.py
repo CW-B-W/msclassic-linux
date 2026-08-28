@@ -19,6 +19,12 @@ from .lockfile import Artifact, load_versions, verify_file
 from .ngs import inspect_ngs_state
 from .paths import AppPaths
 from .platforms import PlatformAdapter, read_os_release, select_platform
+from .runtime import (
+    PATCHED_BUILD_CACHE,
+    patched_runtime_build_supported,
+    patched_runtime_root,
+    patched_runtime_valid,
+)
 
 
 MINIMUM_FREE_BYTES = 2 * 1024**3
@@ -105,6 +111,15 @@ def build_install_plan(
                     (name, artifact.version),
                     source=cached,
                     destination=runtime_destination,
+                    artifact=artifact,
+                )
+            )
+            actions.append(
+                InstallAction(
+                    "prepare_patched_runtime",
+                    (name, artifact.version),
+                    source=runtime_destination,
+                    destination=patched_runtime_root(paths, artifact),
                     artifact=artifact,
                 )
             )
@@ -221,6 +236,9 @@ def _execute_action(action: InstallAction, paths: AppPaths, registry_path: Path)
     if action.kind == "extract_artifact":
         _extract_artifact(action)
         return
+    if action.kind == "prepare_patched_runtime":
+        _prepare_patched_runtime(action, paths)
+        return
     if action.kind == "install_binary":
         _install_binary(action)
         return
@@ -336,6 +354,54 @@ def _install_binary(action: InstallAction) -> None:
     temporary.replace(destination)
 
 
+def _prepare_patched_runtime(action: InstallAction, paths: AppPaths) -> None:
+    artifact = action.artifact
+    source = action.source
+    destination = action.destination
+    if artifact is None or artifact.name != "wine" or source is None or destination is None:
+        raise InstallerError("invalid patched Wine runtime action")
+    if patched_runtime_valid(paths, artifact):
+        return
+    expected_source = paths.tools / artifact.version
+    expected_destination = patched_runtime_root(paths, artifact)
+    try:
+        paths_match = (
+            source.resolve() == expected_source.resolve()
+            and destination.resolve() == expected_destination.resolve()
+        )
+    except OSError as exc:
+        raise InstallerError("patched Wine runtime paths are unavailable") from exc
+    if not paths_match or not _extraction_valid(source, artifact):
+        raise InstallerError("locked base Wine runtime is unavailable")
+    if destination.exists():
+        raise InstallerError("invalid patched Wine runtime already exists")
+    if not patched_runtime_build_supported(paths):
+        raise InstallerError("patched Wine v1 requires the validated /home/ubuntu profile")
+    builder = _REPO / "scripts/build-patched-wine.sh"
+    if not builder.is_file() or not os.access(builder, os.X_OK):
+        raise InstallerError("patched Wine runtime builder is unavailable")
+    try:
+        completed = subprocess.run(
+            [
+                str(builder),
+                "--base-runtime",
+                str(source),
+                "--output",
+                str(destination),
+                "--cache",
+                str(PATCHED_BUILD_CACHE),
+            ],
+            shell=False,
+            stdin=subprocess.DEVNULL,
+            timeout=45 * 60,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise InstallerError("patched Wine runtime build failed") from exc
+    if completed.returncode != 0 or not patched_runtime_valid(paths, artifact):
+        raise InstallerError("patched Wine runtime build failed verification")
+
+
 def _import_client(action: InstallAction) -> None:
     source = action.source
     destination = action.destination
@@ -371,8 +437,8 @@ def _import_client(action: InstallAction) -> None:
 def _run_runtime(paths: AppPaths, arguments: list[str]) -> None:
     artifact = load_versions(_REPO / "versions.lock")["wine"]
     tools = paths.tools.resolve()
-    wine_root = (paths.tools / artifact.version).resolve()
-    if not wine_root.is_relative_to(tools) or not _extraction_valid(wine_root, artifact):
+    wine_root = patched_runtime_root(paths, artifact).resolve()
+    if not wine_root.is_relative_to(tools) or not patched_runtime_valid(paths, artifact):
         raise InstallerError("pinned Wine runtime is unavailable")
     if not arguments or arguments[0] not in {"wineboot", "regedit"}:
         raise InstallerError("unsupported Wine prefix command")
@@ -436,8 +502,8 @@ def _install_ngs_service(paths: AppPaths, executable: Path) -> None:
 
     artifact = load_versions(_REPO / "versions.lock")["wine"]
     tools = paths.tools.resolve()
-    wine_root = (paths.tools / artifact.version).resolve()
-    if not wine_root.is_relative_to(tools) or not _extraction_valid(wine_root, artifact):
+    wine_root = patched_runtime_root(paths, artifact).resolve()
+    if not wine_root.is_relative_to(tools) or not patched_runtime_valid(paths, artifact):
         raise InstallerError("pinned Wine runtime is unavailable")
     wine = wine_root / "bin/wine"
     if not wine.is_file() or not os.access(wine, os.X_OK):

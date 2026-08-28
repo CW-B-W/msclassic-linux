@@ -37,7 +37,9 @@ Completion requires all of the following:
 - Wine starts `Maplestory_Classic.exe` with the authenticated argument vector.
 - Unity starts `UnityCrashHandler64.exe`.
 - The native game plugin `grap64.dll` loads.
-- A constrained x86-64 NTDLL frame-walk patch prevents the earlier Unity/GRAP-adjacent crash and lets the client reach server selection.
+- A constrained x86-64 NTDLL frame-walk patch prevents the earlier Unity/GRAP-adjacent crash and lets the client reach and remain in a live map.
+- The complete Wine service prefix starts the game-shipped `NGService.exe`, which starts `grap-core64.aes` normally.
+- `Maplestory_Classic.exe`, `grap-core64.aes`, and `UnityCrashHandler64.exe` coexist in the successful run, matching the Windows reference process set.
 
 ## Original failure
 
@@ -95,7 +97,38 @@ The hypothesis was confirmed in isolated and live-prefix trials:
 - the old partial prefix could not be made trustworthy by an in-place update, so it was retained as a rollback directory and replaced by a separately built and fully validated prefix;
 - the active replacement now passes offline checks for `RpcSs`, `PlugPlay`, `NGS`, and the installed broker.
 
-The code now stops and waits for the dedicated Wine server before reading persistent registry state, rejects incomplete service baselines, invokes only the vendor installer, and refuses authenticated launch if NGS state is incomplete. Live GRAP process and map-entry acceptance remain pending.
+The code now stops and waits for the dedicated Wine server before reading persistent registry state, rejects incomplete service baselines, invokes only the vendor installer, and refuses authenticated launch if NGS state is incomplete.
+
+## Live validation after repair
+
+The fresh authenticated GamePass launch on 2026-08-27 produced this safe, name-only lifecycle:
+
+```text
+Maplestory_Classic.exe
+UnityCrashHandler64.exe
+NGService.exe               # short-lived broker start
+grap-core64.aes             # remained alive
+```
+
+`grap64.dll` had three mappings in the MapleStory process. `NGService.exe` spawned at 21:07:00 and exited after handing off to GRAP; `grap-core64.aes` remained alive with MapleStory and Unity Crash Handler throughout the observation. The operator selected a character and entered a live map without the prior security-module forced-close message.
+
+No process argument vector was printed because MapleStory and GRAP command lines can contain private per-session values.
+
+## Debugger failure is separate from GRAP bootstrap
+
+A later native Linux Cheat Engine attachment produced Unity's `Fatal error in
+GC: SuspendThread loop failed`. It also reproduced when the debugger merely
+remained attached and performed no scan. At failure, `grap-core64.aes` was
+still alive and the VM had several GiB of available memory; there was no OOM
+event or memory-pressure stall.
+
+The failure was reproduced without MapleStory or GRAP using a harmless Windows
+probe with 64 worker threads. Native Linux `ptrace` attachment made Wine's
+Windows `GetThreadContext` calls fail, whereas Windows Cheat Engine running
+inside the same Wine server attached, scanned the probe's test buffer, remained
+attached for 10 minutes, and detached with zero probe failures. This supports a Wine/debugger thread-control
+conflict, not a GRAP attribution. See
+[Debugger compatibility](debugger-compatibility.md).
 
 ## CyderBits comparison
 
@@ -120,24 +153,35 @@ grap-core64.aes <game-code> <game-pid> <event-handle>
 
 For Classic, the observed game code is `2982`. The PID and event handle are per launch and must come from the normal service workflow. Cyder's application layer has no game-specific code that replaces this chain; its Wine/CrossOver runtime and prefix permit the vendor workflow to run.
 
-## Deployed/runtime divergence
+## Runtime divergence resolved
 
-The repository currently locks the stock `wine-11.10-staging-tkg-amd64-wow64` artifact. The deployed handler was temporarily changed during diagnosis to use a persistent candidate named `wine-11.10-staging-tkg-amd64-wow64-msclassic1` and to capture `+process,+loaddll` diagnostics.
+The repository still locks the unmodified `wine-11.10-staging-tkg-amd64-wow64` archive as its base artifact. It now also contains:
 
-Therefore the checked-in project does not yet reproduce the exact runtime that reached server selection. Before calling the project reproducible, it must provide an auditable build/apply path for the NTDLL patch and remove the temporary deployed-only runner divergence.
+- the exact source patch at `patches/wine-11.10-ntdll-frame-walk-page-fault-guard.patch`;
+- the exact upstream source commit `4b12965ca7e78b8e45eee5f835c72963b3ce351d`;
+- a fail-closed builder at `scripts/build-patched-wine.sh`;
+- independent stock-artifact, patch, source-file, final NTDLL, and runtime-manifest checks;
+- a separate installed profile named `wine-11.10-staging-tkg-amd64-wow64-msclassic1`;
+- normal quiet launcher code shared by the repository and deployed application.
+
+An end-to-end reproduction created a fresh runtime and matched the known-good patched NTDLL SHA-256 exactly:
+
+```text
+2bb7613fead5e50b4fa47e65f1d2856a5b8d8301a58a806d1a7214451004123d
+```
+
+Wine embeds absolute source paths in NTDLL, so profile v1 pins `/home/ubuntu/.cache/msclassic-build`. This is reproducible on the current Lubuntu VM template and deliberately fails early for another home path. A path-independent profile is future distribution portability work.
 
 ## Investigation order
 
 Each trial changes one variable and records before/after evidence:
 
-1. Verify a clean or repaired prefix reaches a complete Wine service baseline (`RpcSs`, `PlugPlay`, and `services.exe` access).
-2. Run the vendor-supplied `NGService_Install.bat` or its exact `NGService.exe -install` command inside that prefix; do not construct an `NGS` registry entry manually.
-3. Verify the resulting service name, image path, installed file, and start/query behavior.
-4. Launch once with bounded `+service,+process,+loaddll` diagnostics and verify the updater/core creation boundary.
-5. Verify `grap-core64.aes` remains alive, creates its named pipe, and prevents the forced-close condition through map entry.
-6. Convert the confirmed setup into an idempotent installer action and an offline doctor check.
-7. Add failing-first tests for incomplete-prefix rejection, vendor-service provisioning, redacted diagnostics, and relaunch behavior.
-8. Restore quiet normal-launch diagnostics, update the quick start and troubleshooting guide, and run the full regression suite.
+1. Confirm Chinese composition after the launcher begins forwarding Fcitx/XIM
+   environment variables.
+2. Exit normally and relaunch from the website; separately confirm recovery
+   after a failed debugger-attached process is fully stopped.
+3. Reboot the guest and repeat without manually running doctor.
+4. Reproduce on VM 2 before increasing concurrency.
 
 ## Rejected shortcuts
 

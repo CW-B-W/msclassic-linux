@@ -6,14 +6,24 @@ This repository does not contain the game client, Wine archives, credentials, br
 
 ## Current status
 
-- Validated Windows runtime: Wine 11.10 staging/TkG WoW64.
+- Validated Windows runtime: Wine 11.10 staging/TkG WoW64 plus the audited
+  NTDLL frame-walk guard built by this repository.
 - Rendering path: WineD3D → Mesa VirGL OpenGL.
 - No GPU passthrough.
 - Authenticated client launch and 1366×768 rendering validated on Lubuntu 24.04/PVE.
-- Server selection is reachable with the patched Wine candidate. A fresh complete prefix now contains the vendor-installed `NGS` service and broker; live `grap-core64.aes` and map-entry acceptance are pending the next authenticated launch.
+- GamePass login, server/character selection, live map entry, and the vendor
+  security chain are validated. `Maplestory_Classic.exe`, `grap-core64.aes`,
+  and `UnityCrashHandler64.exe` remained alive together in the map.
+- Character movement and held arrow keys are validated through Proxmox noVNC
+  and AnyDesk with their normal settings. RustDesk is not recommended for
+  gameplay on this Linux guest because its held-arrow delivery was reduced to
+  taps; this did not occur on the Windows reference VM.
+- An operator-observed game-only session remained stable for about four hours.
+- The launcher now preserves the active Fcitx 5 environment for Wine/XIM.
+  Chinese composition needs confirmation on the next authenticated launch.
 - Fedora, Arch Linux, native hardware, Wayland, and NVIDIA are roadmap targets, not supported claims.
 
-The live result is documented in [Successful launch — 2026-08-27](docs/2026-08-27-successful-launch.md), and the security-service diagnosis and repair are tracked in [GRAP / NGS-X investigation — 2026-08-27](docs/2026-08-27-grap-ngs-investigation.md). Character/map and multi-VM acceptance remain pending.
+The live result is documented in [Successful launch — 2026-08-27](docs/2026-08-27-successful-launch.md), and the security-service diagnosis and repair are tracked in [GRAP / NGS-X investigation — 2026-08-27](docs/2026-08-27-grap-ngs-investigation.md). Chinese input, clean post-debugger recovery/relaunch, reboot, and multi-VM acceptance remain pending.
 
 ## Quick start
 
@@ -37,6 +47,11 @@ bash platforms/lubuntu-24.04/install.sh \
   --source /media/ubuntu/MapleStoryClassic
 ```
 
+The current v1 patched-runtime build is deliberately limited to the validated
+`ubuntu` account at `/home/ubuntu`. The installer fails early on another home
+path. Removing that build-path constraint is a portability milestone, not a
+current support claim.
+
 Then use Chromium and the official page: <https://maplestoryclassic.beanfun.com/Main?af_click_id=>. Choose GamePass → Google → your Google account → your Beanfun game account, then launch from the website.
 
 After a reboot, do not run doctor as a ritual. The first website launch automatically checks the current X11/VirGL graphics path and continues if it passes. `msclassic doctor --json` remains available when troubleshooting.
@@ -49,14 +64,21 @@ msclassic plan --source PATH   # zero-mutation plan
 msclassic update               # check only
 msclassic update --apply       # explicit client update
 msclassic stop --yes           # stop only this dedicated Wine prefix
+msclassic debugger --windows-ce /path/to/cheatengine-x86_64.exe
 msclassic uninstall            # retain client and prefix
 ```
+
+The debugger command is an optional compatibility aid for software you are
+authorized to inspect. Native Linux debuggers that attach to Wine with
+`ptrace` are unsupported for this Unity title; see
+[Debugger compatibility](docs/debugger-compatibility.md).
 
 ## Documentation
 
 - [Architecture](docs/architecture.md)
 - [Lubuntu 24.04 / PVE quick start](docs/quick-start-lubuntu-pve.md)
 - [Troubleshooting](docs/troubleshooting.md)
+- [Debugger compatibility](docs/debugger-compatibility.md)
 - [Adding a distribution or hardware profile](docs/adding-a-platform.md)
 - [Roadmap and expected porting effort](docs/roadmap.md)
 - [Successful launch record](docs/2026-08-27-successful-launch.md)

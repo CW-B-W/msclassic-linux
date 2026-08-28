@@ -21,6 +21,7 @@ from msclassic.runner import (
     restore_desktop_handler,
     run_authenticated,
 )
+from msclassic.runtime import patched_runtime_root
 
 
 REPO = Path(__file__).resolve().parents[1]
@@ -34,7 +35,7 @@ class RunnerTests(unittest.TestCase):
         self.home.mkdir()
         self.paths = AppPaths.from_environment({"HOME": str(self.home)})
         artifact = load_versions(REPO / "versions.lock")["wine"]
-        self.wine_root = self.paths.tools / artifact.version
+        self.wine_root = patched_runtime_root(self.paths, artifact)
         self.wine = self.wine_root / "bin/wine"
         self.wine.parent.mkdir(parents=True)
         shutil.copy2(REPO / "tests/fixtures/fake-wine", self.wine)
@@ -75,8 +76,13 @@ class RunnerTests(unittest.TestCase):
         self.boot_id = Path("/proc/sys/kernel/random/boot_id").read_text(encoding="ascii").strip()
         self.paths.state.mkdir(parents=True)
         self.write_approval(self.boot_id)
+        self.runtime_validation = mock.patch(
+            "msclassic.runner.patched_runtime_valid", return_value=True
+        )
+        self.runtime_validation.start()
 
     def tearDown(self):
+        self.runtime_validation.stop()
         self.temp.cleanup()
 
     def write_approval(self, boot_id):
@@ -108,6 +114,9 @@ class RunnerTests(unittest.TestCase):
             "XDG_RUNTIME_DIR": "/run/user/1000",
             "PULSE_SERVER": "unix:/run/pulse/native",
             "PIPEWIRE_REMOTE": "pipewire-0",
+            "XMODIFIERS": "@im=fcitx",
+            "GTK_IM_MODULE": "fcitx",
+            "QT_IM_MODULE": "fcitx",
             "PATH": "/malicious/path",
             "WINEDLLOVERRIDES": "private",
             "WINEDEBUG": "+all",
@@ -129,6 +138,9 @@ class RunnerTests(unittest.TestCase):
         self.assertEqual(env["WINEDEBUG"], "-all")
         self.assertEqual(env["LANG"], "zh_TW.UTF-8")
         self.assertEqual(env["PATH"], f"{self.wine_root / 'bin'}:/usr/bin:/bin")
+        self.assertEqual(env.get("XMODIFIERS"), "@im=fcitx")
+        self.assertEqual(env.get("GTK_IM_MODULE"), "fcitx")
+        self.assertEqual(env.get("QT_IM_MODULE"), "fcitx")
         self.assertNotIn("WINEDLLOVERRIDES", env)
         self.assertNotIn("SECRET_FROM_BROWSER", env)
 
@@ -201,9 +213,9 @@ class RunnerTests(unittest.TestCase):
                 run_authenticated(LaunchRequest("2982", None, ("safe",)), self.paths)
 
     def test_rejects_runtime_without_matching_stamp_or_writable_client(self):
-        (self.wine_root / ".msclassic-artifact.json").write_text("{}", encoding="utf-8")
-        with self.assertRaises(RunnerError):
-            run_authenticated(LaunchRequest("2982", None, ("safe",)), self.paths)
+        with mock.patch("msclassic.runner.patched_runtime_valid", return_value=False):
+            with self.assertRaises(RunnerError):
+                run_authenticated(LaunchRequest("2982", None, ("safe",)), self.paths)
 
     def test_launch_refuses_incomplete_ngs_state_before_private_spawn(self):
         (
@@ -244,6 +256,9 @@ class RunnerTests(unittest.TestCase):
             self.assertIn("x-scheme-handler/nexonplug;", desktop)
             self.assertIn("x-scheme-handler/NexonPlug;", desktop)
             self.assertIn("x-scheme-handler/ngm;", desktop)
+            self.assertNotIn("x-scheme-handler/http;", desktop)
+            self.assertNotIn("x-scheme-handler/https;", desktop)
+            self.assertNotIn("text/html;", desktop)
             self.assertIn(f"Exec={self.home}/.local/bin/msclassic handle-url %u", desktop)
             self.assertEqual(installed.current, "msclassic-ngm.desktop")
             restore_desktop_handler(self.paths)

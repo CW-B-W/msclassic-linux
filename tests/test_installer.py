@@ -28,6 +28,7 @@ from msclassic.installer import (
 from msclassic.lockfile import Artifact
 from msclassic.paths import AppPaths
 from msclassic.platforms import LUBUNTU_2404
+from msclassic.runtime import patched_runtime_root
 
 
 REQUIRED_CLIENT_FILES = (
@@ -63,8 +64,13 @@ class InstallerTests(unittest.TestCase):
             size=len(payload),
         )
         self.payload = payload
+        self.runtime_validation = mock.patch(
+            "msclassic.installer.patched_runtime_valid", return_value=True
+        )
+        self.runtime_validation.start()
 
     def tearDown(self):
+        self.runtime_validation.stop()
         self.temp.cleanup()
 
     def _report(self, *, passes: bool) -> GraphicsReport:
@@ -181,7 +187,7 @@ class InstallerTests(unittest.TestCase):
         from msclassic.lockfile import load_versions
 
         artifact = load_versions(REPO / "versions.lock")["wine"]
-        runtime = self.paths.tools / artifact.version
+        runtime = patched_runtime_root(self.paths, artifact)
         (runtime / "bin").mkdir(parents=True)
         for name in ("wine", "wineserver", "wineboot", "regedit"):
             tool = runtime / "bin" / name
@@ -228,7 +234,7 @@ class InstallerTests(unittest.TestCase):
         from msclassic.lockfile import load_versions
 
         artifact = load_versions(REPO / "versions.lock")["wine"]
-        runtime = self.paths.tools / artifact.version
+        runtime = patched_runtime_root(self.paths, artifact)
         (runtime / "bin").mkdir(parents=True)
         for name in ("wine", "wineserver", "wineboot", "regedit"):
             tool = runtime / "bin" / name
@@ -256,7 +262,7 @@ class InstallerTests(unittest.TestCase):
         from msclassic.lockfile import load_versions
 
         artifact = load_versions(REPO / "versions.lock")["wine"]
-        runtime = self.paths.tools / artifact.version
+        runtime = patched_runtime_root(self.paths, artifact)
         (runtime / "bin").mkdir(parents=True)
         for name in ("wine", "wineserver", "wineboot", "regedit"):
             tool = runtime / "bin" / name
@@ -327,7 +333,7 @@ class InstallerTests(unittest.TestCase):
         from msclassic.lockfile import load_versions
 
         artifact = load_versions(REPO / "versions.lock")["wine"]
-        runtime = self.paths.tools / artifact.version
+        runtime = patched_runtime_root(self.paths, artifact)
         (runtime / "bin").mkdir(parents=True)
         for name in ("wine", "wineserver", "wineboot", "regedit"):
             tool = runtime / "bin" / name
@@ -401,7 +407,7 @@ class InstallerTests(unittest.TestCase):
         from msclassic.lockfile import load_versions
 
         artifact = load_versions(REPO / "versions.lock")["wine"]
-        runtime = self.paths.tools / artifact.version
+        runtime = patched_runtime_root(self.paths, artifact)
         (runtime / "bin").mkdir(parents=True)
         for name in ("wine", "wineserver", "wineboot", "regedit"):
             tool = runtime / "bin" / name

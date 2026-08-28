@@ -14,6 +14,7 @@ from .ngs import inspect_ngs_state
 from .paths import AppPaths
 from .protocol import LaunchRequest
 from .redaction import assert_export_safe
+from .runtime import patched_runtime_root, patched_runtime_valid
 
 
 class RunnerError(ValueError):
@@ -38,6 +39,9 @@ _PASSTHROUGH_ENV = (
     "XDG_RUNTIME_DIR",
     "PULSE_SERVER",
     "PIPEWIRE_REMOTE",
+    "XMODIFIERS",
+    "GTK_IM_MODULE",
+    "QT_IM_MODULE",
 )
 _DESKTOP_NAME = "msclassic-ngm.desktop"
 _LEGACY_DESKTOP_NAMES = {"maplestory-classic-nexonplug.desktop"}
@@ -54,7 +58,7 @@ def build_wine_command(
     paths: AppPaths,
 ) -> tuple[dict[str, str], tuple[str, ...]]:
     artifact = load_versions(_REPO / "versions.lock")["wine"]
-    wine_root = paths.tools / artifact.version
+    wine_root = patched_runtime_root(paths, artifact)
     wine = wine_root / "bin/wine"
     executable = paths.client / "Maplestory_Classic.exe"
     environment = {
@@ -220,7 +224,7 @@ def restore_desktop_handler(paths: AppPaths) -> None:
 def _validate_runtime(paths: AppPaths) -> None:
     artifact = load_versions(_REPO / "versions.lock")["wine"]
     tools = paths.tools.resolve()
-    wine_root = (paths.tools / artifact.version).resolve()
+    wine_root = patched_runtime_root(paths, artifact).resolve()
     wine = wine_root / "bin/wine"
     wineserver = wine_root / "bin/wineserver"
     executable = paths.client / "Maplestory_Classic.exe"
@@ -230,20 +234,8 @@ def _validate_runtime(paths: AppPaths) -> None:
         raise RunnerError("pinned Wine launcher is unavailable")
     if not wineserver.is_file() or not os.access(wineserver, os.X_OK):
         raise RunnerError("pinned Wine server is unavailable")
-    artifact_stamp = wine_root / ".msclassic-artifact.json"
-    try:
-        if artifact_stamp.stat().st_size > 4096:
-            raise RunnerError("Wine artifact stamp is invalid")
-        installed_artifact = json.loads(artifact_stamp.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
-        raise RunnerError("Wine artifact stamp is unavailable") from exc
-    if installed_artifact != {
-        "schema": 1,
-        "name": artifact.name,
-        "version": artifact.version,
-        "digest": artifact.digest,
-    }:
-        raise RunnerError("Wine runtime does not match the locked artifact")
+    if not patched_runtime_valid(paths, artifact):
+        raise RunnerError("Wine runtime does not match the locked patched profile")
     if not executable.is_file() or not os.access(executable, os.R_OK | os.W_OK):
         raise RunnerError("writable MapleStory Classic executable is unavailable")
 

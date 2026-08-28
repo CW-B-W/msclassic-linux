@@ -22,6 +22,12 @@ LUBUNTU_2404 = PlatformAdapter(
         "xdg-utils",
         "libnotify-bin",
         "rsync",
+        "build-essential",
+        "git",
+        "bison",
+        "flex",
+        "gcc-mingw-w64-x86-64-posix",
+        "binutils-mingw-w64-x86-64",
     ),
     chromium_policy_dir="/etc/chromium/policies/managed",
 )

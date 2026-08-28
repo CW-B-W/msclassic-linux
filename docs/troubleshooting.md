@@ -43,17 +43,20 @@ Do not install DXVK merely to make the doctor pass; DXVK is not used by this pro
 
 ## 5. Wine exits before a window appears
 
-Confirm the locked runtime and client exist:
+Confirm the locked base, audited patched runtime, and client exist:
 
 ```bash
 cat ~/.local/share/maplestory-classic/tools/wine-11.10-staging-tkg-amd64-wow64/.msclassic-artifact.json
-test -x ~/.local/share/maplestory-classic/tools/wine-11.10-staging-tkg-amd64-wow64/bin/wine
+cat ~/.local/share/maplestory-classic/tools/wine-11.10-staging-tkg-amd64-wow64-msclassic1/.msclassic-runtime.json
+test -x ~/.local/share/maplestory-classic/tools/wine-11.10-staging-tkg-amd64-wow64-msclassic1/bin/wine
 test -r ~/Games/MapleStoryClassic/Maplestory_Classic.exe
 test -w ~/Games/MapleStoryClassic/Maplestory_Classic.exe
 cat ~/.local/state/maplestory-classic/last-launch-status.json
 ```
 
-GE-Proton11-3 and GE-Proton11-5 were rejected during the investigation because their Wine 11.0 base aborted when Unity called `UIAutomationCore.DLL.UiaDisconnectAllProviders`. The locked Wine 11.10 build implements the required API and launched successfully. Do not silently substitute another runtime.
+GE-Proton11-3 and GE-Proton11-5 were rejected during the investigation because their Wine 11.0 base aborted when Unity called `UIAutomationCore.DLL.UiaDisconnectAllProviders`. The locked Wine 11.10 build implements the required API. The launcher additionally requires this repository's hash-verified NTDLL frame-walk guard; do not silently substitute another runtime or copy an unrecorded DLL into it.
+
+If a fresh install reports that patched Wine v1 requires `/home/ubuntu`, that is an intentional current-profile boundary. Use the `ubuntu` account in the supported Lubuntu VM template. Other home paths need a future path-independent runtime profile; do not bypass the final hash check.
 
 The launch status contains only a fixed stage and integer exit code. Authenticated arguments and the full URI are intentionally absent.
 
@@ -62,7 +65,7 @@ The launch status contains only a fixed stage and integer exit code. Authenticat
 If the client reaches server selection and shows `安全模組運作中` / `客戶端強制關閉(0)`, first check whether the normal GRAP process tree exists:
 
 ```bash
-ps -eo pid,ppid,comm,args | grep -E \
+ps -eo pid,ppid,comm | grep -E \
   'Maplestory_Classic|UnityCrashHandler64|NGService|grap-core64' | grep -v grep
 grep -F '[System\\ControlSet001\\Services\\RpcSs]' \
   ~/.local/share/maplestory-classic/prefix-wine1110/system.reg
@@ -75,7 +78,7 @@ test -f ~/.local/share/maplestory-classic/prefix-wine1110/drive_c/ProgramData/Ne
 
 `grap-core64.aes` is a normal x86-64 Windows PE executable despite its suffix. Do not `chmod +x` it, launch it with guessed arguments, create a fake service entry, or disable the security module. The game-shipped `grap64.dll` expects the Wine service manager to start `NGService.exe`, which verifies and launches GRAP with per-session arguments.
 
-Rerun the guest installer to complete the Wine service baseline and invoke the vendor's `NGService.exe -install` workflow. The installer suppresses optional Wine Mono/Gecko prompts during prefix setup and refuses a partial prefix instead of accepting registry files alone.
+Rerun the guest installer to complete the Wine service baseline and invoke the vendor's `NGService.exe -install` workflow. The installer suppresses optional Wine Mono/Gecko prompts during prefix setup and refuses a partial prefix instead of accepting registry files alone. The repaired 2026-08-27 profile successfully started `NGService.exe`, kept `grap-core64.aes` alive, and entered a map.
 
 See [the GRAP / NGS-X investigation](2026-08-27-grap-ngs-investigation.md) for the evidence and CyderBits comparison.
 
@@ -88,6 +91,12 @@ msclassic stop --yes
 ```
 
 This does not stop unrelated Wine applications.
+
+A Unity fatal-error dialog does not guarantee that the Windows process has
+exited. While that failed process remains alive, the handler process correctly
+keeps `~/.local/state/maplestory-classic/launch.lock`, so another website click
+is rejected instead of spawning a duplicate client. Close the fatal dialog and
+game first, or use the dedicated stop command above, then retry the website.
 
 ## 8. Disk space is insufficient
 
@@ -102,11 +111,70 @@ lsblk
 
 Increasing the virtual disk in Proxmox does not automatically enlarge the guest partition and filesystem. If `lsblk` shows a larger disk but `df` shows the old root size, finish the guest-side partition/filesystem expansion using the filesystem-appropriate tool and a backup. This is separate from VirGL and Wine.
 
-## 9. AnyDesk does not return after a display change
+## 9. Space/Alt work but arrow keys do not move the character remotely
+
+First distinguish the game from the remote-control layer. Held arrows and
+character movement were validated through both Proxmox noVNC and AnyDesk with
+the operator's normal settings. No special AnyDesk keyboard mode was required.
+
+RustDesk alone failed this test on the Linux guest: Space could repeat, but
+held arrows arrived as taps too short for Unity's movement polling. The same
+Mac RustDesk client moved a character normally in a Windows VM. Use noVNC or
+AnyDesk for this guest. Sunshine/Moonlight remains untested rather than assumed
+working. The behavior resembles the Linux held-key issue tracked upstream in
+[RustDesk issue 14360](https://github.com/rustdesk/rustdesk/issues/14360).
+
+This requires no Proxmox, Wine-prefix, IME, or game reinstall. Space and Alt
+working does not disprove a remote-input problem: action keys can trigger on
+key-down, while movement requires a held state across frames.
+
+## 10. AnyDesk does not return after a display change
 
 Use Proxmox WebUI console first. If the guest is unavailable, stop it in WebUI and restore the backup made before the display trial. Do not add GPU passthrough as a troubleshooting shortcut.
 
-## 10. Safe evidence for a report
+## 11. Chinese input works on the desktop but not in the game
+
+Check the desktop session before opening Chromium:
+
+```bash
+pgrep -a fcitx5
+printf 'XMODIFIERS=%s\nGTK_IM_MODULE=%s\nQT_IM_MODULE=%s\n' \
+  "$XMODIFIERS" "$GTK_IM_MODULE" "$QT_IM_MODULE"
+```
+
+Expected values are `@im=fcitx`, `fcitx`, and `fcitx`. The launcher now
+preserves all three. An isolated Wine X11 trace changed from a fallback input
+context to the five Fcitx-supported XIM styles when these variables were
+present. Close and reopen Chromium after correcting the desktop environment,
+then start a new game; an already running Windows process cannot acquire the
+new environment retroactively.
+
+Do not confuse the OS default browser with the MapleStory protocol handler.
+This project registers only `ngm`, `nexonplug`, and `NexonPlug`; it never sets
+the default HTTP/HTTPS browser.
+
+Fcitx background: [input-method environment variables](https://fcitx-im.org/wiki/Input_method_related_environment_variables)
+and [Fcitx 5 setup](https://fcitx-im.org/wiki/Setup_Fcitx_5).
+
+## 12. Cheat Engine attachment ends in `SuspendThread loop failed`
+
+Do not use the native Linux Cheat Engine debugger for this Wine/Unity process.
+The error reproduced even when no value scan was performed. Linux `ptrace`
+controls every Wine thread, while Wine implements Windows suspend/context
+operations through its own signal and wineserver protocol. The two control
+planes conflict; Unity's Boehm garbage collector eventually cannot suspend a
+thread and intentionally terminates the process.
+
+This was not an out-of-memory event: the observed VM retained several GiB of
+available RAM and recorded no OOM or pressure stall. GRAP also remained alive,
+so the evidence does not attribute the crash to the security module.
+
+For software you are authorized to inspect, follow
+[Debugger compatibility](debugger-compatibility.md) and run a Windows debugger
+inside the exact MapleStory Wine prefix. Do not use debugging to disable,
+patch, conceal from, or bypass GRAP/NGS-X.
+
+## 13. Safe evidence for a report
 
 Acceptable evidence includes PVE/QEMU versions, package versions, `glxinfo -B`, sanitized doctor JSON, display resolution, fixed launch status, and observations such as “window appeared” or “audio stuttered.”
 

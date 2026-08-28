@@ -12,6 +12,7 @@ from typing import Iterator
 
 from .lockfile import Artifact, load_versions, verify_file
 from .paths import AppPaths
+from .runtime import patched_runtime_root, patched_runtime_valid
 
 
 UPDATE_HEADROOM_BYTES = 1024**3
@@ -83,11 +84,12 @@ def stop_prefix(paths: AppPaths, confirmed: bool) -> int:
         raise UpdaterError("prefix stop requires explicit confirmation")
     artifact = load_versions(_REPO / "versions.lock")["wine"]
     tools = paths.tools.resolve()
-    wine_root = (paths.tools / artifact.version).resolve()
+    wine_root = patched_runtime_root(paths, artifact).resolve()
     wineserver = (wine_root / "bin/wineserver").resolve()
     if (
         not wine_root.is_relative_to(tools)
         or not wineserver.is_relative_to(wine_root)
+        or not patched_runtime_valid(paths, artifact)
         or not wineserver.is_file()
         or not os.access(wineserver, os.X_OK)
     ):
@@ -203,4 +205,3 @@ def _minimal_environment(paths: AppPaths) -> dict[str, str]:
         if key in os.environ:
             environment[key] = os.environ[key]
     return environment
-

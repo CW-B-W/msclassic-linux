@@ -11,6 +11,7 @@ from unittest import mock
 
 from msclassic.lockfile import Artifact
 from msclassic.paths import AppPaths
+from msclassic.runtime import patched_runtime_root
 from msclassic.updater import (
     UPDATE_HEADROOM_BYTES,
     UpdaterError,
@@ -114,7 +115,10 @@ class UpdaterTests(unittest.TestCase):
         )
 
     def test_stop_requires_confirmation_and_uses_only_prefix_wineserver(self):
-        wineserver = self.paths.tools / "wine-11.10-staging-tkg-amd64-wow64/bin/wineserver"
+        from msclassic.lockfile import load_versions
+
+        artifact = load_versions(Path(__file__).resolve().parents[1] / "versions.lock")["wine"]
+        wineserver = patched_runtime_root(self.paths, artifact) / "bin/wineserver"
         wineserver.parent.mkdir(parents=True)
         wineserver.write_bytes(b"binary")
         wineserver.chmod(0o700)
@@ -123,7 +127,8 @@ class UpdaterTests(unittest.TestCase):
 
         completed = subprocess.CompletedProcess([], 0)
         with mock.patch("msclassic.updater.subprocess.run", return_value=completed) as invoked:
-            self.assertEqual(stop_prefix(self.paths, confirmed=True), 0)
+            with mock.patch("msclassic.updater.patched_runtime_valid", return_value=True):
+                self.assertEqual(stop_prefix(self.paths, confirmed=True), 0)
         commands = [call.args[0] for call in invoked.call_args_list]
         self.assertEqual(commands, [[str(wineserver), "-k"], [str(wineserver), "-w"]])
         self.assertTrue(all("pkill" not in " ".join(command) for command in commands))
@@ -132,4 +137,3 @@ class UpdaterTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

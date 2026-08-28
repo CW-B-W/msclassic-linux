@@ -9,8 +9,9 @@ from pathlib import Path
 from unittest import mock
 
 from msclassic.approval import GraphicsApprovalError
-from msclassic.cli import main
+from msclassic.cli import _install_application, main
 from msclassic.doctor import GraphicsReport
+from msclassic.paths import AppPaths
 from msclassic.updater import UpdateCheck
 
 
@@ -137,6 +138,17 @@ class CliIntegrationTests(unittest.TestCase):
             )
         self.assertEqual(code, 10)
 
+    def test_installed_application_retains_patched_runtime_builder_assets(self):
+        paths = AppPaths.from_environment(self.env)
+        _install_application(paths)
+
+        installed = paths.data / "app"
+        builder = installed / "scripts/build-patched-wine.sh"
+        patch = installed / "patches/wine-11.10-ntdll-frame-walk-page-fault-guard.patch"
+        self.assertTrue(builder.is_file())
+        self.assertTrue(builder.stat().st_mode & 0o100)
+        self.assertTrue(patch.is_file())
+
     def test_chromium_policy_is_scoped_to_official_ngm_origin(self):
         policy = json.loads(
             (REPO / "platforms/lubuntu-24.04/chromium-policy.json").read_text()
@@ -171,6 +183,18 @@ class CliIntegrationTests(unittest.TestCase):
             code, _, _ = self.invoke(["stop", "--yes"])
             self.assertEqual(code, 0)
             stopped.assert_called_once()
+
+    def test_debugger_command_requires_an_available_windows_executable(self):
+        code, _, error = self.invoke(
+            [
+                "debugger",
+                "--windows-ce",
+                str(self.home / "missing-cheat-engine.exe"),
+            ]
+        )
+
+        self.assertEqual(code, 11)
+        self.assertIn("Windows Cheat Engine executable is unavailable", error)
 
     def test_trial_lifecycle_writes_redacted_private_state(self):
         begin = [

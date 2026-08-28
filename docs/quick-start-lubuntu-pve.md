@@ -1,6 +1,6 @@
 # Lubuntu 24.04 on Proxmox: reproducible setup
 
-This is the initial supported deployment: Lubuntu 24.04 with an X11 session, running as a Proxmox VE 9.1 or 9.2 VM with shared VirGL graphics. It does not pass the Intel GPU through to any VM. The validated result launched MapleStory Classic through the official Beanfun website and reached the game service while it was under maintenance.
+This is the initial supported deployment: Lubuntu 24.04 with an X11 session, running as a Proxmox VE 9.1 or 9.2 VM with shared VirGL graphics. It does not pass the Intel GPU through to any VM. The validated result launched MapleStory Classic through the official Beanfun website, started the unmodified GRAP/NGS-X security chain, selected a character, and entered a live map.
 
 The project never changes Proxmox. Every host or VM configuration change below is performed personally by the operator in Proxmox WebUI. The repository's Proxmox helper has only `check` and `webui-plan` modes and cannot apply or roll back a configuration.
 
@@ -11,9 +11,13 @@ official Beanfun page in Chromium
   -> ngm:// or NexonPlug:// desktop handler
   -> bounded parser; authenticated values remain private
   -> automatic current-boot VirGL/OpenGL check
-  -> Wine 11.10 staging/TkG
+  -> audited Wine 11.10 staging/TkG NTDLL patch
   -> WineD3D translates Direct3D to OpenGL
   -> Mesa VirGL -> QEMU VirtIO-GPU -> host Intel i915
+
+Maplestory_Classic.exe
+  -> grap64.dll -> Wine SCM -> vendor NGService.exe
+  -> vendor grap-core64.aes
 ```
 
 Vulkan/Venus is retained as diagnostic information, but MapleStory does not use DXVK or Vulkan in this profile. No Windows VM, GPU passthrough, authentication bypass, or anti-cheat bypass is involved.
@@ -31,7 +35,7 @@ Vulkan/Venus is retained as diagnostic information, but MapleStory does not use 
 | Validated VM sizing | 8 vCPU, 16 GiB RAM |
 | Guest | Lubuntu 24.04, X11, 1440×900 desktop |
 | Game window | 1366×768 |
-| Runtime | `wine-11.10-staging-tkg-amd64-wow64` |
+| Runtime | `wine-11.10-staging-tkg-amd64-wow64-msclassic1` |
 | Game renderer | WineD3D/OpenGL, OpenGL renderer containing `virgl` |
 
 The CPU and memory values are the proven starting point, not measured minimums. Reduce them only as a separate capacity trial.
@@ -110,7 +114,7 @@ Expected essentials:
 -set 'device.vga.venus=on'
 ```
 
-There must be one VirtIO GL display and no passed-through PCI GPU. Start the VM from WebUI and reconnect with AnyDesk.
+There must be one VirtIO GL display and no passed-through PCI GPU. Start the VM from WebUI and reconnect with the guest using your preferred access method.
 
 ## 3. Check guest storage and session
 
@@ -134,7 +138,7 @@ bash platforms/lubuntu-24.04/install.sh \
   --source /media/ubuntu/MapleStoryClassic
 ```
 
-Dry-run performs no sudo, package, network, or filesystem mutation. It validates the source tree, reports required space, and lists only the locked Wine 11.10 and nxdl artifacts.
+Dry-run performs no sudo, package, network, or filesystem mutation. It validates the source tree, reports required space, and lists only the locked Wine 11.10 and nxdl artifacts. The real installation also installs the pinned compiler tools needed to build the small audited Wine NTDLL patch.
 
 The source must contain the legitimate Windows client, including `Maplestory_Classic.exe`, `UnityPlayer.dll`, `GameAssembly.dll`, and the expected game plug-in tree. Game files are never committed to this repository.
 
@@ -150,7 +154,9 @@ bash platforms/lubuntu-24.04/install.sh \
 The two stages are:
 
 1. Lubuntu bootstrap: enable i386, install the adapter's Mesa diagnostics and utilities, generate `zh_TW.UTF-8`, and install the Chromium policy scoped to the official site.
-2. Application install: require working X11/VirGL, verify exact artifact hashes, copy or verify the writable client, initialize a dedicated Wine prefix, import narrow input/focus registry settings, install `~/.local/bin/msclassic`, and register the three observed external-protocol MIME spellings with rollback state.
+2. Application install: require working X11/VirGL, verify exact artifact hashes, build and verify the NTDLL patch from the pinned Wine source commit, copy or verify the writable client, initialize a complete dedicated Wine prefix, run the game-shipped `NGService.exe -install`, import narrow focus/runtime settings, install `~/.local/bin/msclassic`, and register the three observed external-protocol MIME spellings with rollback state.
+
+The patched build is fail-closed. It checks the source commit, source-file hash, patch hash, stock NTDLL hash, final patched NTDLL size/hash, and two runtime manifests. Wine embeds its source path in NTDLL, so v1 currently supports only the validated `/home/ubuntu` profile and builds under `/home/ubuntu/.cache/msclassic-build`. A different username or home path is rejected before compilation; path-independent builds are future portability work.
 
 Persistent locations follow XDG conventions:
 
@@ -158,6 +164,7 @@ Persistent locations follow XDG conventions:
 ~/Games/MapleStoryClassic
 ~/.local/share/maplestory-classic/prefix-wine1110
 ~/.local/share/maplestory-classic/tools/
+~/.cache/msclassic-build/
 ~/.cache/maplestory-classic/downloads/
 ~/.local/state/maplestory-classic/
 ```
@@ -174,6 +181,20 @@ xdg-mime query default x-scheme-handler/NexonPlug
 Expected: `gate_passed` is true, OpenGL contains `virgl`, and each handler is `msclassic-ngm.desktop`.
 
 `doctor` is a troubleshooting command, not a reboot ritual. After a reboot the first website launch notices that the approval is missing or stale, runs the quick VirGL check automatically, writes a private mode-0600 current-boot stamp, and continues. Later launches in the same boot reuse that stamp.
+
+For Chinese input, confirm that Fcitx 5 is running in the desktop session and
+that its XIM variables are present before opening Chromium:
+
+```bash
+pgrep -a fcitx5
+printf 'XMODIFIERS=%s\nGTK_IM_MODULE=%s\nQT_IM_MODULE=%s\n' \
+  "$XMODIFIERS" "$GTK_IM_MODULE" "$QT_IM_MODULE"
+```
+
+The expected values are `@im=fcitx`, `fcitx`, and `fcitx`. The launcher passes
+these variables into Wine; it does not store an input-method choice or account
+data. This path is verified with a Wine XIM probe, while live Chinese
+composition in MapleStory remains an acceptance item.
 
 ## 7. Launch through the official website
 
@@ -192,15 +213,29 @@ The validated personal login sequence is:
 
 Normally nothing else needs to be opened. Chromium dispatches the authenticated URL to `msclassic`, which validates game code `2982`, keeps all arguments out of logs, checks graphics if this is the first launch after boot, and starts the pinned Wine runtime.
 
+Held arrow keys and normal gameplay input were validated through both Proxmox
+noVNC and AnyDesk using the operator's normal settings. RustDesk on this Linux
+guest delivered held arrow keys as short repeated taps, so it is not currently
+recommended for gameplay. The same RustDesk client worked with the Windows VM,
+which localizes this limitation to the Linux-host remote-input path rather than
+MapleStory or Wine. Sunshine/Moonlight has not yet been tested on this guest.
+
 If the website displays scheduled maintenance before generating a launch request, no handler or game window is expected. Do not redo Proxmox or Wine setup for a server-side maintenance notice.
+
+If a failed game still has a fatal-error window or process alive, the launch
+lock correctly rejects another website request. Close the failed client first.
+If it cannot exit normally, run `msclassic stop --yes`; this stops only the
+dedicated MapleStory Wine prefix. Then launch again from the website.
 
 ## 8. Acceptance and scale-out
 
 After maintenance, validate one VM before cloning the setup:
 
-1. Reach character selection and enter a map.
-2. Play for 15 minutes at 1280×720 or above.
-3. Check audio, keyboard, mouse, focus, frame pacing, and AnyDesk responsiveness.
+1. Confirm `Maplestory_Classic.exe`, `grap-core64.aes`, and `UnityCrashHandler64.exe` coexist after entering a map.
+2. Play for at least 15 minutes at 1280×720 or above. The first VM has already
+   completed an operator-observed game-only run of about four hours.
+3. Check audio, noVNC or AnyDesk keyboard input, mouse, focus, frame pacing,
+   Fcitx Chinese composition, and remote responsiveness.
 4. Exit normally and launch again from the website.
 5. Reboot the guest and verify one website launch succeeds without manually running doctor.
 
@@ -232,3 +267,8 @@ msclassic update --apply
 ```
 
 Use `msclassic stop --yes` only when normal game exit leaves the dedicated prefix running. It invokes that prefix's pinned `wineserver`; it never uses a global `pkill`.
+
+For authorized debugger compatibility testing, use a Windows Cheat Engine copy
+inside the same Wine runtime rather than the native Linux `ptrace` debugger.
+See [Debugger compatibility](debugger-compatibility.md) before testing. This is
+not an anti-cheat bypass and does not alter GRAP.
