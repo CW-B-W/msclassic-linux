@@ -138,6 +138,42 @@ class CliIntegrationTests(unittest.TestCase):
             )
         self.assertEqual(code, 10)
 
+    def test_download_client_dry_run_requires_no_graphics_or_network(self):
+        with mock.patch("msclassic.cli.collect_graphics_report") as graphics:
+            with mock.patch("msclassic.cli.installer_main", return_value=0) as installer:
+                code, output, _ = self.invoke(
+                    ["install", "--dry-run", "--download-client"]
+                )
+
+        self.assertEqual(code, 0)
+        self.assertEqual(output, "")
+        graphics.assert_not_called()
+        self.assertEqual(
+            installer.call_args.args[0],
+            [
+                "--dry-run",
+                "--platform",
+                "lubuntu-24.04",
+                "--download-client",
+                "--lock",
+                str(REPO / "versions.lock"),
+            ],
+        )
+
+    def test_install_requires_exactly_one_source_or_download_mode(self):
+        self.assertEqual(self.invoke(["install"])[0], 2)
+        self.assertEqual(
+            self.invoke(
+                [
+                    "install",
+                    "--download-client",
+                    "--source",
+                    str(self.root / "source"),
+                ]
+            )[0],
+            2,
+        )
+
     def test_installed_application_retains_patched_runtime_builder_assets(self):
         paths = AppPaths.from_environment(self.env)
         _install_application(paths)

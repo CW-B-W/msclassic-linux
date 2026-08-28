@@ -130,6 +130,81 @@ class InstallerTests(unittest.TestCase):
                 LUBUNTU_2404,
             )
 
+    def test_download_mode_acquires_only_after_locked_nxdl_is_installed(self):
+        nxdl = Artifact(
+            "nxdl",
+            "v0.1.2-prerelease3",
+            "https://example.invalid/nxdl",
+            "sha256",
+            hashlib.sha256(b"nxdl").hexdigest(),
+            4,
+        )
+
+        plan = build_install_plan(
+            self.paths,
+            {"wine": self.artifact, "nxdl": nxdl},
+            None,
+            LUBUNTU_2404,
+            download_client=True,
+        )
+
+        kinds = [action.kind for action in plan.actions]
+        self.assertIn("acquire_client", kinds)
+        self.assertLess(kinds.index("install_binary"), kinds.index("acquire_client"))
+        self.assertLess(kinds.index("acquire_client"), kinds.index("initialize_prefix"))
+        self.assertNotIn("import_client", kinds)
+        self.assertEqual(
+            next(action for action in plan.actions if action.kind == "acquire_client").artifact,
+            nxdl,
+        )
+
+    def test_download_mode_reuses_valid_client_and_refuses_invalid_client(self):
+        nxdl = Artifact(
+            "nxdl",
+            "v0.1.2-prerelease3",
+            "https://example.invalid/nxdl",
+            "sha256",
+            hashlib.sha256(b"nxdl").hexdigest(),
+            4,
+        )
+        for relative in REQUIRED_CLIENT_FILES:
+            destination = self.paths.client / relative
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            destination.write_bytes((self.source / relative).read_bytes())
+
+        reused = build_install_plan(
+            self.paths,
+            {"wine": self.artifact, "nxdl": nxdl},
+            None,
+            LUBUNTU_2404,
+            download_client=True,
+        )
+        self.assertIn("verify_client", [action.kind for action in reused.actions])
+        self.assertNotIn("acquire_client", [action.kind for action in reused.actions])
+
+        (self.paths.client / "UnityPlayer.dll").unlink()
+        (self.paths.client / "UnityPlayer.dll").symlink_to(
+            self.source / "UnityPlayer.dll"
+        )
+        with self.assertRaisesRegex(InstallerError, "existing client is invalid"):
+            build_install_plan(
+                self.paths,
+                {"wine": self.artifact, "nxdl": nxdl},
+                None,
+                LUBUNTU_2404,
+                download_client=True,
+            )
+
+        (self.paths.client / "UnityPlayer.dll").unlink()
+        with self.assertRaisesRegex(InstallerError, "existing client is invalid"):
+            build_install_plan(
+                self.paths,
+                {"wine": self.artifact, "nxdl": nxdl},
+                None,
+                LUBUNTU_2404,
+                download_client=True,
+            )
+
     def test_existing_destination_is_verified_or_backed_up_before_import(self):
         self.paths.client.mkdir(parents=True)
         (self.paths.client / "unrelated.txt").write_text("keep", encoding="utf-8")

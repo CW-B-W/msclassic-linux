@@ -14,6 +14,11 @@ from pathlib import Path, PurePosixPath
 from typing import Callable, Mapping
 from urllib.parse import urlsplit
 
+from .client_download import (
+    ClientDownloadError,
+    assert_safe_client_tree,
+    download_and_promote,
+)
 from .doctor import GraphicsReport, evaluate_launch_graphics
 from .lockfile import Artifact, load_versions, verify_file
 from .ngs import inspect_ngs_state
@@ -78,15 +83,23 @@ def package_command_prefix(*, euid: int, sudo_path: str | None) -> tuple[str, ..
 def build_install_plan(
     paths: AppPaths,
     artifacts: Mapping[str, Artifact],
-    source: Path,
+    source: Path | None,
     adapter: PlatformAdapter,
+    *,
+    download_client: bool = False,
 ) -> InstallPlan:
-    source = source.resolve()
-    _validate_client(source)
+    if download_client == (source is not None):
+        raise InstallerError("choose --source PATH or --download-client")
     unsupported = sorted(set(artifacts) - {"wine", "nxdl"})
     if unsupported:
         raise InstallerError("unsupported locked artifact: " + ", ".join(unsupported))
-    source_bytes = _tree_size(source)
+    source_bytes = 0
+    if source is not None:
+        source = source.resolve()
+        _validate_client(source)
+        source_bytes = _tree_size(source)
+    elif "nxdl" not in artifacts:
+        raise InstallerError("locked nxdl artifact is required for client download")
     required_bytes = source_bytes + sum(item.size * 3 for item in artifacts.values()) + MINIMUM_FREE_BYTES
     actions: list[InstallAction] = [InstallAction("install_packages", adapter.package_names)]
 
@@ -134,15 +147,36 @@ def build_install_plan(
                 )
             )
 
-    if not paths.client.exists():
+    if download_client and not paths.client.exists():
+        actions.append(
+            InstallAction(
+                "acquire_client",
+                destination=paths.client,
+                artifact=artifacts["nxdl"],
+            )
+        )
+    elif not paths.client.exists():
+        if source is None:
+            raise InstallerError("client source is unavailable")
         actions.append(InstallAction("import_client", source=source, destination=paths.client))
     else:
         try:
             _validate_client(paths.client)
         except InstallerError:
+            if download_client:
+                raise InstallerError("existing client is invalid; refusing to replace it")
+            if source is None:
+                raise InstallerError("client source is unavailable")
             actions.append(InstallAction("backup_client", source=paths.client))
             actions.append(InstallAction("import_client", source=source, destination=paths.client))
         else:
+            if download_client:
+                try:
+                    assert_safe_client_tree(paths.client)
+                except ClientDownloadError as exc:
+                    raise InstallerError(
+                        "existing client is invalid; refusing to replace it"
+                    ) from exc
             actions.append(InstallAction("verify_client", source=paths.client))
 
     actions.append(InstallAction("initialize_prefix", destination=paths.prefix))
@@ -241,6 +275,14 @@ def _execute_action(action: InstallAction, paths: AppPaths, registry_path: Path)
         return
     if action.kind == "install_binary":
         _install_binary(action)
+        return
+    if action.kind == "acquire_client":
+        if action.artifact is None:
+            raise InstallerError("invalid client download action")
+        try:
+            download_and_promote(paths, action.artifact, _validate_client)
+        except ClientDownloadError as exc:
+            raise InstallerError(str(exc)) from exc
         return
     if action.kind == "backup_client":
         if action.source is None or not action.source.exists():
@@ -668,7 +710,9 @@ def _format_bytes(value: int) -> str:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Plan the MapleStory Classic guest installation")
     parser.add_argument("--dry-run", action="store_true", required=True)
-    parser.add_argument("--source", type=Path, required=True)
+    client_mode = parser.add_mutually_exclusive_group(required=True)
+    client_mode.add_argument("--source", type=Path)
+    client_mode.add_argument("--download-client", action="store_true")
     parser.add_argument("--lock", type=Path, required=True)
     parser.add_argument("--platform")
     args = parser.parse_args(argv)
@@ -678,12 +722,21 @@ def main(argv: list[str] | None = None) -> int:
     paths = AppPaths.from_environment(os.environ)
     artifacts = load_versions(args.lock)
     adapter = select_platform(args.platform, read_os_release())
-    plan = build_install_plan(paths, artifacts, args.source, adapter)
-    source_bytes = _tree_size(args.source.resolve())
+    plan = build_install_plan(
+        paths,
+        artifacts,
+        args.source,
+        adapter,
+        download_client=args.download_client,
+    )
 
     print("DRY RUN: zero mutations")
-    print(f"Client source: {args.source.resolve()}")
-    print(f"Client size: {_format_bytes(source_bytes)}")
+    if args.source is not None:
+        source_bytes = _tree_size(args.source.resolve())
+        print(f"Client source: {args.source.resolve()}")
+        print(f"Client size: {_format_bytes(source_bytes)}")
+    else:
+        print("Client source: public nxdl manifest (size checked during real install)")
     print(f"Required free space: {_format_bytes(plan.required_bytes)}")
     print(f"Platform: {adapter.id}")
     print("Packages: " + " ".join(adapter.package_names))

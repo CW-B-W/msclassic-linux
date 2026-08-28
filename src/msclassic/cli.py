@@ -115,16 +115,18 @@ def _dispatch(args: argparse.Namespace, paths: AppPaths) -> int:
     if args.command in {"plan", "install"}:
         adapter = select_platform(args.platform, read_os_release())
         if args.command == "plan" or args.dry_run:
+            installer_arguments = [
+                "--dry-run",
+                "--platform",
+                adapter.id,
+            ]
+            if args.command == "install" and args.download_client:
+                installer_arguments.append("--download-client")
+            else:
+                installer_arguments.extend(["--source", str(args.source)])
+            installer_arguments.extend(["--lock", str(REPO / "versions.lock")])
             return installer_main(
-                [
-                    "--dry-run",
-                    "--platform",
-                    adapter.id,
-                    "--source",
-                    str(args.source),
-                    "--lock",
-                    str(REPO / "versions.lock"),
-                ]
+                installer_arguments
             )
         report = collect_graphics_report(paths)
         passed, failures = evaluate_launch_graphics(report)
@@ -133,7 +135,13 @@ def _dispatch(args: argparse.Namespace, paths: AppPaths) -> int:
             print("Graphics gate failed: " + "; ".join(failures), file=sys.stderr)
             return EXIT_GRAPHICS
         artifacts = load_versions(REPO / "versions.lock")
-        plan = build_install_plan(paths, artifacts, args.source, adapter)
+        plan = build_install_plan(
+            paths,
+            artifacts,
+            args.source,
+            adapter,
+            download_client=args.download_client,
+        )
         perform_install(
             plan,
             report,
@@ -403,7 +411,9 @@ def _parser() -> argparse.ArgumentParser:
     install = subcommands.add_parser("install")
     install.add_argument("--dry-run", action="store_true")
     install.add_argument("--platform", default="lubuntu-24.04")
-    install.add_argument("--source", type=Path, default=Path("/media/ubuntu/MapleStoryClassic"))
+    client_mode = install.add_mutually_exclusive_group(required=True)
+    client_mode.add_argument("--source", type=Path)
+    client_mode.add_argument("--download-client", action="store_true")
     handler = subcommands.add_parser("handle-url")
     handler.add_argument("uri")
     stop = subcommands.add_parser("stop")

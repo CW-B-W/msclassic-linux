@@ -132,6 +132,10 @@ def normalize_windows_backslash_names(staging: Path) -> None:
             raise ClientDownloadError("download filename normalization failed") from exc
 
 
+def assert_safe_client_tree(root: Path) -> None:
+    _reject_unsafe_tree(root)
+
+
 def _check_without_lock(paths: AppPaths, nxdl: Artifact) -> DownloadCheck:
     binary = _verified_nxdl(paths, nxdl)
     try:
