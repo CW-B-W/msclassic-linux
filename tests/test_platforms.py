@@ -1,6 +1,10 @@
 import unittest
+from pathlib import Path
 
 from msclassic.platforms import UnsupportedPlatformError, select_platform
+
+
+REPO = Path(__file__).resolve().parents[1]
 
 
 class PlatformSelectionTests(unittest.TestCase):
@@ -41,6 +45,13 @@ class PlatformSelectionTests(unittest.TestCase):
                     "unsupported platform; currently supported: lubuntu-24.04",
                 ):
                     select_platform(requested, release)
+
+    def test_docs_describe_game_input_mode_and_restore(self):
+        text = (REPO / "docs/quick-start-lubuntu-pve.md").read_text(encoding="utf-8")
+
+        self.assertIn("msclassic input status", text)
+        self.assertIn("msclassic input restore", text)
+        self.assertIn("Alt+Tab", text)
 
 
 if __name__ == "__main__":

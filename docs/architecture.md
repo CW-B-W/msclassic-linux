@@ -28,6 +28,16 @@ forwarding the browser's complete environment. In addition to display, audio,
 and D-Bus state, it forwards `XMODIFIERS`, `GTK_IM_MODULE`, and
 `QT_IM_MODULE` so Wine's X11 driver can open the active Fcitx XIM service.
 
+For the supported Lubuntu X11 session, the handler also invokes a small
+per-game input-profile manager. It asks Fcitx for direct input, transactionally
+backs up the user's Openbox and LXQt shortcut files under the project's private
+state directory, then applies a temporary profile before Wine starts. The
+profile keeps `Alt+Tab` and `Alt+Shift+Tab` but disables the other configurable
+desktop shortcuts until Wine exits. A `finally` cleanup restores the original
+files; `msclassic input status` and `msclassic input restore` expose safe
+inspection and crash recovery. The feature is fail-open on another desktop
+environment and never writes system Openbox/LXQt configuration.
+
 Optional authorized debugging has a separate launcher boundary. It accepts
 only a readable Windows `.exe`, starts it with the exact pinned Wine binary and
 the exact game prefix, and does not forward browser secrets. Native Linux

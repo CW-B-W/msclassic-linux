@@ -166,10 +166,44 @@ Do not confuse the OS default browser with the MapleStory protocol handler.
 This project registers only `ngm`, `nexonplug`, and `NexonPlug`; it never sets
 the default HTTP/HTTPS browser.
 
+## 12. Chinese chat works, but action keys or desktop shortcuts interrupt play
+
+The official launch starts in English/direct-input mode. The current Fcitx
+profile uses Left Shift to switch Chinese/English. Use Left Shift intentionally
+to enter Chinese chat, then use it again to return to English before
+alphabetic action keys such as `C`. The input method cannot determine whether
+the Unity game is currently displaying a chat field, so automatic per-field
+switching is not possible.
+
+Game input mode leaves `Alt+Tab` and `Alt+Shift+Tab` available. It temporarily
+disables other Openbox/LXQt desktop bindings, including the observed
+`Alt+Space` client-menu binding, only while the official Wine launch is
+running. It restores the exact prior per-user shortcut files on game exit.
+
+Check its state without exposing a website launch URL:
+
+```bash
+msclassic input status
+```
+
+If a guest crash, forced Wine shutdown, or interrupted remote session left the
+temporary desktop profile behind, run this from a separate terminal, SSH
+session, or Proxmox console:
+
+```bash
+msclassic input restore
+```
+
+It is safe to run repeatedly. Do not edit `/etc/xdg/openbox/rc.xml` or disable
+LXQt shortcuts globally. The profile intentionally applies only to the
+supported Lubuntu X11/Openbox/LXQt session. It cannot control shortcuts that a
+remote client consumes before they reach the guest, nor mandatory OS security
+controls.
+
 Fcitx background: [input-method environment variables](https://fcitx-im.org/wiki/Input_method_related_environment_variables)
 and [Fcitx 5 setup](https://fcitx-im.org/wiki/Setup_Fcitx_5).
 
-## 12. Cheat Engine attachment ends in `SuspendThread loop failed`
+## 13. Cheat Engine attachment ends in `SuspendThread loop failed`
 
 Do not use the native Linux Cheat Engine debugger for this Wine/Unity process.
 The error reproduced even when no value scan was performed. Linux `ptrace`

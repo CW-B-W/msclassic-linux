@@ -21,6 +21,11 @@ This repository does not contain the game client, Wine archives, credentials, br
 - An operator-observed game-only session remained stable for about four hours.
 - Chinese input is validated in-game. The launcher preserves the active Fcitx
   5 environment so Wine's X11 input context can use the desktop IME.
+- Game input mode is implemented for the supported Lubuntu X11/Openbox/LXQt
+  session: launch begins in English/direct input, retains Left Shift for
+  deliberate Chinese chat switching, preserves Alt+Tab, and transactionally
+  restores desktop shortcut settings after the game exits. Live remote-session
+  acceptance remains required before treating it as a scale-out baseline.
 - Authorized debugger compatibility is validated for Windows Cheat Engine 7.5
   in the same Wine prefix: ordinary Windows debugger attachment, a
   content-neutral read-only scan, clean detach, and continued gameplay passed.
@@ -86,6 +91,8 @@ msclassic install --download-client --dry-run  # preview first-time download
 msclassic update               # check only
 msclassic update --apply       # explicit client update
 msclassic stop --yes           # stop only this dedicated Wine prefix
+msclassic input status         # inspect temporary Game input mode state
+msclassic input restore        # recover desktop shortcuts after an interrupted game
 msclassic debugger --windows-ce /path/to/cheatengine-x86_64.exe
 msclassic uninstall            # retain client and prefix
 ```
@@ -106,7 +113,7 @@ authorized to inspect. Native Linux debuggers that attach to Wine with
 - [Roadmap and expected porting effort](docs/roadmap.md)
 - [Successful launch record](docs/2026-08-27-successful-launch.md)
 - [GRAP / NGS-X investigation](docs/2026-08-27-grap-ngs-investigation.md)
-- [Design specification](docs/superpowers/specs/2026-08-27-ms-classic-linux-clean-project-design.md)
+- [Game input-mode specification](docs/superpowers/specs/2026-08-29-game-input-mode-design.md)
 
 The original macOS community workflow and compatibility research are credited in the successful-launch record. This repository is a Linux implementation; it does not redistribute CitrusGate, CyderBits, the game, or their runtime payloads.
 

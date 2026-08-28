@@ -225,6 +225,34 @@ these variables into Wine; it does not store an input-method choice or account
 data. This path is verified with a Wine XIM probe, while live Chinese
 composition in MapleStory was confirmed on 2026-08-28.
 
+### Game input mode
+
+The normal website launch prepares **Game input mode** immediately before Wine
+starts. It asks Fcitx to use English/direct input, then temporarily removes
+desktop shortcuts that can steal a game key. It restores the prior Openbox and
+LXQt shortcut configuration after the game process exits. It never edits
+`/etc`, Proxmox, or the host.
+
+`Alt+Tab` and `Alt+Shift+Tab` remain available so the player can leave the
+game. Current Fcitx configuration uses Left Shift to switch Chinese/English;
+that trigger remains available for intentional chat entry. Toggle it to
+Chinese to type a chat message, then toggle it back to English before using
+letter action keys. Fcitx cannot tell a Unity chat field from gameplay, so
+this explicit switch is required.
+
+Inspect or recover the profile without a launch URL:
+
+```bash
+msclassic input status
+msclassic input restore
+```
+
+`restore` is safe to repeat. Use it from a separate terminal, SSH session, or
+Proxmox console after a crash or forcibly stopped game if the desktop shortcut
+profile did not restore automatically. The profile currently applies only to
+the Lubuntu X11/Openbox/LXQt session; another desktop environment launches
+normally without shortcut changes.
+
 ## 7. Launch through the official website
 
 Open Chromium inside the guest and visit:
@@ -248,6 +276,13 @@ guest delivered held arrow keys as short repeated taps, so it is not currently
 recommended for gameplay. The same RustDesk client worked with the Windows VM,
 which localizes this limitation to the Linux-host remote-input path rather than
 MapleStory or Wine. Sunshine/Moonlight has not yet been tested on this guest.
+
+Game input mode additionally keeps `Alt+Tab` and `Alt+Shift+Tab` available,
+while temporarily disabling other configured Openbox/LXQt desktop shortcuts.
+Test `Alt+Space`, Meta/Super, `Ctrl+Alt+T`, `Ctrl+Alt+L`, screenshots, and
+desktop switching through noVNC and AnyDesk before cloning this profile. Those
+clients are the acceptance paths; RustDesk remains excluded because its
+held-arrow limitation is unrelated to Game input mode.
 
 If the website displays scheduled maintenance before generating a launch request, no handler or game window is expected. Do not redo Proxmox or Wine setup for a server-side maintenance notice.
 
