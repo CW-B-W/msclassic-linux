@@ -109,6 +109,19 @@ df -h /
 lsblk
 ```
 
+For a first-time public download instead of a mounted source, preview without
+network access first, then let the real installer query the manifest and apply
+its `total_size + 1 GiB` gate:
+
+```bash
+bash platforms/lubuntu-24.04/install.sh --dry-run --download-client
+bash platforms/lubuntu-24.04/install.sh --download-client
+```
+
+An interrupted download remains at `~/Games/.MapleStoryClassic.download` for
+inspection and retry. The installer deliberately refuses to overwrite an
+incomplete final client; move it aside only after reviewing it.
+
 Increasing the virtual disk in Proxmox does not automatically enlarge the guest partition and filesystem. If `lsblk` shows a larger disk but `df` shows the old root size, finish the guest-side partition/filesystem expansion using the filesystem-appropriate tool and a backup. This is separate from VirGL and Wine.
 
 ## 9. Space/Alt work but arrow keys do not move the character remotely

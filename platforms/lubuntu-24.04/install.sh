@@ -3,10 +3,11 @@ set -euo pipefail
 
 repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 dry_run=0
-source_dir="/media/ubuntu/MapleStoryClassic"
+client_mode=()
+client_mode_selected=0
 
 usage() {
-  printf 'Usage: %s [--dry-run] [--source PATH]\n' "$0" >&2
+  printf 'Usage: %s [--dry-run] (--source PATH | --download-client)\n' "$0" >&2
   exit 2
 }
 
@@ -17,13 +18,22 @@ while [[ "$#" -gt 0 ]]; do
       shift
       ;;
     --source)
-      [[ "$#" -ge 2 ]] || usage
-      source_dir="$2"
+      [[ "$#" -ge 2 && "$client_mode_selected" -eq 0 ]] || usage
+      client_mode=(--source "$2")
+      client_mode_selected=1
       shift 2
+      ;;
+    --download-client)
+      [[ "$client_mode_selected" -eq 0 ]] || usage
+      client_mode=(--download-client)
+      client_mode_selected=1
+      shift
       ;;
     *) usage ;;
   esac
 done
+
+[[ "$client_mode_selected" -eq 1 ]] || usage
 
 export PYTHONDONTWRITEBYTECODE=1
 export PYTHONPATH="$repo/src"
@@ -32,7 +42,7 @@ if [[ "$dry_run" -eq 1 ]]; then
   exec python3 -m msclassic.installer \
     --dry-run \
     --platform lubuntu-24.04 \
-    --source "$source_dir" \
+    "${client_mode[@]}" \
     --lock "$repo/versions.lock"
 fi
 
@@ -66,4 +76,4 @@ chromium_policy_dir="/etc/chromium/policies/managed"
 python3 -m msclassic.cli doctor --preflight --json
 exec python3 -m msclassic.cli install \
   --platform lubuntu-24.04 \
-  --source "$source_dir"
+  "${client_mode[@]}"

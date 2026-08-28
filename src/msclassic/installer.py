@@ -147,7 +147,8 @@ def build_install_plan(
                 )
             )
 
-    if download_client and not paths.client.exists():
+    client_entry_exists = paths.client.exists() or paths.client.is_symlink()
+    if download_client and not client_entry_exists:
         actions.append(
             InstallAction(
                 "acquire_client",
@@ -155,7 +156,7 @@ def build_install_plan(
                 artifact=artifacts["nxdl"],
             )
         )
-    elif not paths.client.exists():
+    elif not client_entry_exists:
         if source is None:
             raise InstallerError("client source is unavailable")
         actions.append(InstallAction("import_client", source=source, destination=paths.client))

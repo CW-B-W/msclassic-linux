@@ -2,6 +2,7 @@ import hashlib
 import io
 import json
 import os
+import shutil
 import tarfile
 import tempfile
 import unittest
@@ -195,7 +196,8 @@ class InstallerTests(unittest.TestCase):
                 download_client=True,
             )
 
-        (self.paths.client / "UnityPlayer.dll").unlink()
+        shutil.rmtree(self.paths.client)
+        self.paths.client.symlink_to(self.root / "missing-client", target_is_directory=True)
         with self.assertRaisesRegex(InstallerError, "existing client is invalid"):
             build_install_plan(
                 self.paths,
@@ -628,6 +630,46 @@ class InstallerTests(unittest.TestCase):
         self.assertIn("DRY RUN: zero mutations", result.stdout)
         self.assertIn("wine-11.10-staging-tkg-amd64-wow64", result.stdout)
         self.assertEqual(list(self.home.iterdir()), [])
+
+    def test_guest_wrapper_download_dry_run_is_explicit_and_zero_mutation(self):
+        env = os.environ.copy()
+        env.update({"HOME": str(self.home), "PYTHONDONTWRITEBYTECODE": "1"})
+        command = [
+            "bash",
+            str(REPO / "platforms/lubuntu-24.04/install.sh"),
+            "--dry-run",
+            "--download-client",
+        ]
+        result = subprocess.run(
+            command,
+            text=True,
+            capture_output=True,
+            env=env,
+            check=False,
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("DRY RUN: zero mutations", result.stdout)
+        self.assertIn("acquire_client", result.stdout)
+        self.assertEqual(list(self.home.iterdir()), [])
+        no_mode = subprocess.run(
+            command[:2] + ["--dry-run"],
+            text=True,
+            capture_output=True,
+            env=env,
+            check=False,
+        )
+        self.assertEqual(no_mode.returncode, 2)
+
+    def test_docs_cover_first_time_download_and_staging_recovery(self):
+        quick_start = (REPO / "docs/quick-start-lubuntu-pve.md").read_text(
+            encoding="utf-8"
+        )
+        readme = (REPO / "README.md").read_text(encoding="utf-8")
+
+        self.assertIn("install.sh --download-client", quick_start)
+        self.assertIn(".MapleStoryClassic.download", quick_start)
+        self.assertIn("--download-client", readme)
 
     def _archive(self, *, name=None, member=None):
         path = self.root / f"archive-{len(list(self.root.glob('archive-*')))}.tar"

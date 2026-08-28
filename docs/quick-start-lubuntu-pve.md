@@ -118,7 +118,7 @@ There must be one VirtIO GL display and no passed-through PCI GPU. Start the VM 
 
 ## 3. Check guest storage and session
 
-The conservative plan for the observed 2.77 GiB client is about 5.05 GiB of free space, including runtime/download and rollback headroom:
+The conservative source-import plan for the observed 2.77 GiB client is about 5.05 GiB of free space, including runtime/download and rollback headroom. The first-time download path checks the current public manifest and requires its reported size plus 1 GiB before it starts:
 
 ```bash
 df -h /
@@ -138,7 +138,14 @@ bash platforms/lubuntu-24.04/install.sh \
   --source /media/ubuntu/MapleStoryClassic
 ```
 
-Dry-run performs no sudo, package, network, or filesystem mutation. It validates the source tree, reports required space, and lists only the locked Wine 11.10 and nxdl artifacts. The real installation also installs the pinned compiler tools needed to build the small audited Wine NTDLL patch.
+If there is no mounted client source, preview the explicit public-download
+path instead:
+
+```bash
+bash platforms/lubuntu-24.04/install.sh --dry-run --download-client
+```
+
+Dry-run performs no sudo, package, network, or filesystem mutation. Source mode validates and sizes the source tree. Download mode intentionally does not contact the public manifest, so it reports no guessed client size; the real mode performs the checked manifest gate before downloading. Both list only the locked Wine 11.10 and nxdl artifacts. The real installation also installs the pinned compiler tools needed to build the small audited Wine NTDLL patch.
 
 The source must contain the legitimate Windows client, including `Maplestory_Classic.exe`, `UnityPlayer.dll`, `GameAssembly.dll`, and the expected game plug-in tree. Game files are never committed to this repository.
 
@@ -151,6 +158,19 @@ bash platforms/lubuntu-24.04/install.sh \
   --source /media/ubuntu/MapleStoryClassic
 ```
 
+Alternatively, on a fresh VM without a mounted client tree, run the explicit
+first-time download:
+
+```bash
+bash platforms/lubuntu-24.04/install.sh --download-client
+```
+
+The installer verifies its pinned `nxdl` binary, queries the public Classic
+manifest, checks the required space, and displays `nxdl`'s native download
+output. It never asks for or stores a Beanfun, Google, or game-account
+credential. Website authentication happens later, in Chromium on the official
+Beanfun page.
+
 The two stages are:
 
 1. Lubuntu bootstrap: enable i386, install the adapter's Mesa diagnostics and utilities, generate `zh_TW.UTF-8`, and install the Chromium policy scoped to the official site.
@@ -162,12 +182,21 @@ Persistent locations follow XDG conventions:
 
 ```text
 ~/Games/MapleStoryClassic
+~/Games/.MapleStoryClassic.download
 ~/.local/share/maplestory-classic/prefix-wine1110
 ~/.local/share/maplestory-classic/tools/
 ~/.cache/msclassic-build/
 ~/.cache/maplestory-classic/downloads/
 ~/.local/state/maplestory-classic/
 ```
+
+The download stage is deliberately retained after an interrupted or failed
+download. Review it and rerun the same `--download-client` command to retry;
+the installer does not delete it automatically. If
+`~/Games/MapleStoryClassic` already exists but is incomplete or contains an
+unsafe link/special file, download mode refuses to overwrite it. Preserve or
+move that directory aside after review, then retry. A valid existing client is
+reused without another download.
 
 ## 6. Verify the guest
 
@@ -229,7 +258,9 @@ dedicated MapleStory Wine prefix. Then launch again from the website.
 
 ## 8. Acceptance and scale-out
 
-After maintenance, validate one VM before cloning the setup:
+After maintenance, validate one VM before cloning the setup. For the new
+first-time-download path, do this first on a second fresh VM without a mounted
+client source; it is not yet a completed acceptance result:
 
 1. Confirm `Maplestory_Classic.exe`, `grap-core64.aes`, and `UnityCrashHandler64.exe` coexist after entering a map.
 2. Play for at least 15 minutes at 1280×720 or above. The first VM has already

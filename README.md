@@ -44,12 +44,29 @@ bash platforms/lubuntu-24.04/install.sh \
   --source /media/ubuntu/MapleStoryClassic
 ```
 
+Or, on a fresh VM without a mounted client source, preview the public
+first-time download instead:
+
+```bash
+bash platforms/lubuntu-24.04/install.sh --dry-run --download-client
+```
+
 After reviewing the zero-mutation plan:
 
 ```bash
 bash platforms/lubuntu-24.04/install.sh \
   --source /media/ubuntu/MapleStoryClassic
 ```
+
+For the first-time download path, run:
+
+```bash
+bash platforms/lubuntu-24.04/install.sh --download-client
+```
+
+It downloads only public game content through the checksum-verified `nxdl`
+tool. It does not ask for, store, or transmit Beanfun/Google credentials; use
+the official website only after installation completes.
 
 The current v1 patched-runtime build is deliberately limited to the validated
 `ubuntu` account at `/home/ubuntu`. The installer fails early on another home
@@ -65,6 +82,7 @@ After a reboot, do not run doctor as a ritual. The first website launch automati
 ```bash
 msclassic doctor --json        # manual diagnostics
 msclassic plan --source PATH   # zero-mutation plan
+msclassic install --download-client --dry-run  # preview first-time download
 msclassic update               # check only
 msclassic update --apply       # explicit client update
 msclassic stop --yes           # stop only this dedicated Wine prefix
