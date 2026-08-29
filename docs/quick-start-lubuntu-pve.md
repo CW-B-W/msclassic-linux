@@ -256,6 +256,30 @@ profile did not restore automatically. The profile currently applies only to
 the Lubuntu X11/Openbox/LXQt session; another desktop environment launches
 normally without shortcut changes.
 
+### Numeric performance profile
+
+To investigate stutter without recording input, window titles, launch values,
+or account data, arm a one-shot profile before clicking the website launch:
+
+```bash
+msclassic profile start
+msclassic profile status
+```
+
+The authenticated launcher samples once per second while that game process is
+alive and stops its in-process sampler at exit. Samples contain only numeric
+game/wineserver CPU and RSS totals, guest RAM and swap, swap deltas, iowait,
+pressure-stall totals, disk-byte deltas, and a numeric balloon target when the
+guest exposes one. Files are private mode `0600` below
+`~/.local/state/maplestory-classic/performance-profile/`. `profile stop`
+disarms or stops sampling without terminating the game.
+
+For a meaningful A/B comparison, use the same remote client, resolution,
+route, map, and approximate player population for two five-minute runs. The
+profile observes guest state only; it does not change Proxmox. Any host change
+must still be applied by the operator in Proxmox WebUI after the data supports
+that experiment.
+
 ## 7. Launch through the official website
 
 Open Chromium inside the guest and visit:

@@ -25,6 +25,7 @@ from .input_mode import InputModeError, game_input_status, restore_game_input
 from .lockfile import LockfileError, load_versions
 from .paths import AppPaths
 from .platforms import UnsupportedPlatformError, read_os_release, select_platform
+from .profiler import arm_profile, profile_status, stop_profile
 from .protocol import ProtocolError, parse_launch_uri
 from .redaction import UnsafeExportError, assert_export_safe
 from .runner import (
@@ -168,6 +169,19 @@ def _dispatch(args: argparse.Namespace, paths: AppPaths) -> int:
             payload = restore_game_input(paths, os.environ).to_json()
         else:
             raise ValueError("unsupported input command")
+        assert_export_safe(payload)
+        print(json.dumps(payload, sort_keys=True))
+        return EXIT_SUCCESS
+
+    if args.command == "profile":
+        if args.profile_command == "start":
+            payload = arm_profile(paths).to_json()
+        elif args.profile_command == "status":
+            payload = profile_status(paths).to_json()
+        elif args.profile_command == "stop":
+            payload = stop_profile(paths).to_json()
+        else:
+            raise ValueError("unsupported profile command")
         assert_export_safe(payload)
         print(json.dumps(payload, sort_keys=True))
         return EXIT_SUCCESS
@@ -433,6 +447,11 @@ def _parser() -> argparse.ArgumentParser:
     input_subcommands = input_command.add_subparsers(dest="input_command", required=True)
     input_subcommands.add_parser("status")
     input_subcommands.add_parser("restore")
+    profile = subcommands.add_parser("profile")
+    profile_subcommands = profile.add_subparsers(dest="profile_command", required=True)
+    profile_subcommands.add_parser("start")
+    profile_subcommands.add_parser("status")
+    profile_subcommands.add_parser("stop")
     stop = subcommands.add_parser("stop")
     stop.add_argument("--yes", action="store_true")
     debugger = subcommands.add_parser("debugger")

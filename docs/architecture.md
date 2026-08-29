@@ -39,6 +39,13 @@ cleanup restores the exact Openbox bytes and every saved LXQt enabled state;
 and crash recovery. It never edits the LXQt shortcut file, restarts the LXQt
 daemon, or writes system configuration.
 
+An optional one-shot profiler runs as a sampler thread owned by the authenticated
+launcher, not as a persistent service. It reads fixed numeric counters from
+`/proc` and PSI once per second and writes a private JSON-lines file. It never
+reads process command lines or records input, paths, window metadata, launch
+arguments, or account data. Removing its control marker stops sampling without
+stopping Wine.
+
 Optional authorized debugging has a separate launcher boundary. It accepts
 only a readable Windows `.exe`, starts it with the exact pinned Wine binary and
 the exact game prefix, and does not forward browser secrets. Native Linux

@@ -17,6 +17,7 @@ from .input_mode import (
 from .lockfile import load_versions
 from .ngs import inspect_ngs_state
 from .paths import AppPaths
+from .profiler import ProfilerError, start_armed_profiler
 from .protocol import LaunchRequest
 from .redaction import assert_export_safe
 from .runtime import patched_runtime_root, patched_runtime_valid
@@ -114,6 +115,10 @@ def run_authenticated(
         except InputModeError:
             profile = None
         try:
+            profiler = start_armed_profiler(paths)
+        except ProfilerError:
+            profiler = None
+        try:
             _write_launch_status(paths, "starting")
             try:
                 completed = subprocess.run(
@@ -132,6 +137,11 @@ def run_authenticated(
             _write_launch_status(paths, "exited", completed.returncode)
             return completed.returncode
         finally:
+            if profiler is not None:
+                try:
+                    profiler.stop()
+                except ProfilerError:
+                    pass
             if profile is not None and profile.state == "active":
                 restore_game_input(paths, environment)
 

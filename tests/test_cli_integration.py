@@ -13,6 +13,7 @@ from msclassic.cli import _install_application, main
 from msclassic.doctor import GraphicsReport
 from msclassic.input_mode import InputModeStatus
 from msclassic.paths import AppPaths
+from msclassic.profiler import ProfilerStatus
 from msclassic.updater import UpdateCheck
 
 
@@ -128,6 +129,30 @@ class CliIntegrationTests(unittest.TestCase):
         self.assertEqual(error, "")
         self.assertEqual(json.loads(output), status.to_json())
         restored.assert_called_once()
+
+    def test_profile_commands_print_safe_state_and_delegate(self):
+        statuses = {
+            "start": ProfilerStatus("armed", "The next game launch will capture numeric performance data"),
+            "status": ProfilerStatus("capturing", "A numeric performance profile is being captured"),
+            "stop": ProfilerStatus("inactive", "Performance profiling is inactive"),
+        }
+        functions = {
+            "start": "arm_profile",
+            "status": "profile_status",
+            "stop": "stop_profile",
+        }
+
+        for command in ("start", "status", "stop"):
+            with self.subTest(command=command):
+                with mock.patch(
+                    f"msclassic.cli.{functions[command]}",
+                    return_value=statuses[command],
+                ) as invoked:
+                    code, output, error = self.invoke(["profile", command])
+                self.assertEqual(code, 0)
+                self.assertEqual(error, "")
+                self.assertEqual(json.loads(output), statuses[command].to_json())
+                invoked.assert_called_once()
 
     def test_handler_failure_uses_fixed_notification_and_redacted_error(self):
         private_uri = "nexonplug://?game=2982&passarg=private-browser-value"

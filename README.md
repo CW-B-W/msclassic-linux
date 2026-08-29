@@ -94,6 +94,9 @@ msclassic update --apply       # explicit client update
 msclassic stop --yes           # stop only this dedicated Wine prefix
 msclassic input status         # inspect temporary Game input mode state
 msclassic input restore        # recover desktop shortcuts after an interrupted game
+msclassic profile start        # arm numeric profiling for the next website launch
+msclassic profile status       # report inactive, armed, or capturing
+msclassic profile stop         # disarm/stop profiling without stopping the game
 msclassic debugger --windows-ce /path/to/cheatengine-x86_64.exe
 msclassic uninstall            # retain client and prefix
 ```

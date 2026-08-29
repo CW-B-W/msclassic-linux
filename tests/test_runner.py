@@ -94,6 +94,7 @@ class RunnerTests(unittest.TestCase):
                     "inactive", "No game input profile is active"
                 ),
             ),
+            mock.patch("msclassic.runner.start_armed_profiler", return_value=None),
         ]
         for patch in self.input_patches:
             patch.start()
@@ -270,6 +271,24 @@ class RunnerTests(unittest.TestCase):
                 )
 
         restored.assert_called_once()
+
+    def test_authenticated_launch_stops_an_armed_profiler_after_wine(self):
+        profiler = mock.Mock()
+
+        with (
+            mock.patch("msclassic.runner.start_armed_profiler", return_value=profiler),
+            mock.patch(
+                "msclassic.runner.subprocess.run",
+                return_value=subprocess.CompletedProcess([], 0),
+            ),
+        ):
+            result = run_authenticated(
+                LaunchRequest("2982", None, ("safe",)),
+                self.paths,
+            )
+
+        self.assertEqual(result, 0)
+        profiler.stop.assert_called_once_with()
 
     def test_duplicate_launch_is_refused_immediately(self):
         lock_path = self.paths.state / "launch.lock"
