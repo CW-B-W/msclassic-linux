@@ -1,0 +1,164 @@
+diff --git a/dlls/winex11.drv/Makefile.in b/dlls/winex11.drv/Makefile.in
+index b10be2c..6d3a469 100644
+--- a/dlls/winex11.drv/Makefile.in
++++ b/dlls/winex11.drv/Makefile.in
+@@ -14,6 +14,7 @@ SOURCES = \
+ 	dllmain.c \
+ 	event.c \
+ 	graphics.c \
++	input_diag.c \
+ 	init.c \
+ 	keyboard.c \
+ 	mouse.c \
+diff --git a/dlls/winex11.drv/event.c b/dlls/winex11.drv/event.c
+index e87403f..b3dcb78 100644
+--- a/dlls/winex11.drv/event.c
++++ b/dlls/winex11.drv/event.c
+@@ -507,7 +507,12 @@ BOOL X11DRV_ProcessEvents( DWORD mask )
+         }
+ 
+         count++;
+-        if (XFilterEvent( &event, None )) continue;
++        if (XFilterEvent( &event, None ))
++        {
++            if (event.type == KeyPress || event.type == KeyRelease)
++                msclassic_input_diag_record( MSCLASSIC_DIAG_XIM_FILTERED_KEYBOARD );
++            continue;
++        }
+         if (host_window_filter_event( &event, &prev_event )) continue;
+ 
+         get_event_data( &event );
+@@ -864,6 +869,7 @@ static BOOL X11DRV_FocusIn( HWND hwnd, XEvent *xev )
+     /* ignore wm specific NotifyUngrab / NotifyGrab events w.r.t focus */
+     if (event->mode == NotifyGrab || event->mode == NotifyUngrab) return FALSE;
+ 
++    msclassic_input_diag_record( MSCLASSIC_DIAG_FOCUS_IN );
+     xim_set_focus( hwnd, TRUE );
+ 
+     if (use_take_focus) return TRUE;
+@@ -957,6 +963,7 @@ static BOOL X11DRV_FocusOut( HWND hwnd, XEvent *xev )
+     /* ignore wm specific NotifyUngrab / NotifyGrab events w.r.t focus */
+     if (event->mode == NotifyGrab || event->mode == NotifyUngrab) return FALSE;
+ 
++    msclassic_input_diag_record( MSCLASSIC_DIAG_FOCUS_OUT );
+     focus_out( event->display, hwnd );
+     return TRUE;
+ }
+diff --git a/dlls/winex11.drv/input_diag.c b/dlls/winex11.drv/input_diag.c
+new file mode 100644
+index 0000000..4826bf4
+--- /dev/null
++++ b/dlls/winex11.drv/input_diag.c
+@@ -0,0 +1,63 @@
++/* Privacy-bounded MapleStory input diagnostics. */
++
++#if 0
++#pragma makedep unix
++#endif
++
++#include "config.h"
++
++#include <errno.h>
++#include <fcntl.h>
++#include <pthread.h>
++#include <stdint.h>
++#include <stdlib.h>
++#include <string.h>
++#include <time.h>
++#include <unistd.h>
++
++#include "x11drv.h"
++
++struct msclassic_input_diag_record
++{
++    uint64_t monotonic_ns;
++    uint32_t sequence;
++    uint16_t category;
++    uint16_t schema;
++};
++
++static pthread_once_t diagnostic_once = PTHREAD_ONCE_INIT;
++static unsigned int diagnostic_sequence;
++static int diagnostic_fd = -1;
++
++static void init_diagnostic(void)
++{
++    const char *enabled = getenv( "MSCLASSIC_INPUT_DIAGNOSTIC" );
++    const char *value = getenv( "MSCLASSIC_INPUT_DIAGNOSTIC_FD" );
++    char *end;
++    long fd;
++
++    if (!enabled || strcmp( enabled, "1" ) || !value || !*value) return;
++    errno = 0;
++    fd = strtol( value, &end, 10 );
++    if (errno || *end || fd < 3 || fd > 0x7fffffff || fcntl( fd, F_GETFD ) == -1) return;
++    diagnostic_fd = fd;
++}
++
++void msclassic_input_diag_record( enum msclassic_input_diag_category category )
++{
++    struct msclassic_input_diag_record record;
++    struct timespec now;
++    ssize_t result;
++
++    pthread_once( &diagnostic_once, init_diagnostic );
++    if (diagnostic_fd < 0 || category < MSCLASSIC_DIAG_XIM_FILTERED_KEYBOARD ||
++        category > MSCLASSIC_DIAG_FOCUS_OUT) return;
++    if (clock_gettime( CLOCK_MONOTONIC, &now ) == -1) return;
++
++    record.monotonic_ns = (uint64_t)now.tv_sec * 1000000000u + now.tv_nsec;
++    record.sequence = __atomic_add_fetch( &diagnostic_sequence, 1, __ATOMIC_RELAXED );
++    record.category = category;
++    record.schema = 1;
++    do result = write( diagnostic_fd, &record, sizeof(record) );
++    while (result == -1 && errno == EINTR);
++}
+diff --git a/dlls/winex11.drv/x11drv.h b/dlls/winex11.drv/x11drv.h
+index b150e97..83736d2 100644
+--- a/dlls/winex11.drv/x11drv.h
++++ b/dlls/winex11.drv/x11drv.h
+@@ -919,6 +919,19 @@ extern void xim_set_result_string( HWND hwnd, const char *str, UINT count );
+ extern XIC X11DRV_get_ic( HWND hwnd );
+ extern void xim_set_focus( HWND hwnd, BOOL focus );
+ 
++enum msclassic_input_diag_category
++{
++    MSCLASSIC_DIAG_XIM_FILTERED_KEYBOARD = 1,
++    MSCLASSIC_DIAG_IME_OPEN,
++    MSCLASSIC_DIAG_IME_CLOSED,
++    MSCLASSIC_DIAG_COMPOSITION_RECT_SET,
++    MSCLASSIC_DIAG_COMPOSITION_RECT_CLEAR,
++    MSCLASSIC_DIAG_FOCUS_IN,
++    MSCLASSIC_DIAG_FOCUS_OUT,
++};
++
++extern void msclassic_input_diag_record( enum msclassic_input_diag_category category );
++
+ #define XEMBED_MAPPED  (1 << 0)
+ 
+ static inline BOOL is_window_rect_mapped( const RECT *rect )
+diff --git a/dlls/winex11.drv/xim.c b/dlls/winex11.drv/xim.c
+index ed18908..81bde40 100644
+--- a/dlls/winex11.drv/xim.c
++++ b/dlls/winex11.drv/xim.c
+@@ -363,6 +363,9 @@ void X11DRV_NotifyIMEStatus( HWND hwnd, UINT status )
+ 
+     TRACE( "hwnd %p, status %#x\n", hwnd, status );
+ 
++    if (status) msclassic_input_diag_record( MSCLASSIC_DIAG_IME_OPEN );
++    else msclassic_input_diag_record( MSCLASSIC_DIAG_IME_CLOSED );
++
+     if (!(xic = X11DRV_get_ic( hwnd ))) return;
+ 
+     if ((attr = XVaCreateNestedList( 0, XNPreeditState, state, NULL )))
+@@ -582,6 +585,10 @@ BOOL X11DRV_SetIMECompositionRect( HWND hwnd, RECT rect )
+     XVaNestedList attr;
+     XPoint xpoint;
+ 
++    if (IsRectEmpty( &rect ))
++        msclassic_input_diag_record( MSCLASSIC_DIAG_COMPOSITION_RECT_CLEAR );
++    else msclassic_input_diag_record( MSCLASSIC_DIAG_COMPOSITION_RECT_SET );
++
+     if (!(input_style & XIMPreeditPosition))
+         return FALSE;
+ 

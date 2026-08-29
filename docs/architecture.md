@@ -46,6 +46,16 @@ reads process command lines or records input, paths, window metadata, launch
 arguments, or account data. Removing its control marker stops sampling without
 stopping Wine.
 
+The contextual IME investigation uses a second, side-by-side Wine directory.
+It copies the validated runtime, replaces only `winex11.so` with a driver built
+from the same pinned source commit, and validates the source, patch, base
+driver, NTDLL, output driver, and manifests by digest. Normal launches and
+Windows CE never select it. An explicitly armed launch passes one append-only
+private file descriptor and records fixed-size values containing only a
+monotonic timestamp, process-local sequence, schema, and event-category enum.
+No key identity, text, rectangle coordinates, window metadata, command line,
+or authenticated value is available to the record format.
+
 Optional authorized debugging has a separate launcher boundary. It accepts
 only a readable Windows `.exe`, starts it with the exact pinned Wine binary and
 the exact game prefix, and does not forward browser secrets. Native Linux

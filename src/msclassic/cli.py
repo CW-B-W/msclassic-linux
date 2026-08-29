@@ -22,6 +22,13 @@ from .doctor import collect_graphics_report, evaluate_launch_graphics
 from .debugger import DebuggerError, run_windows_ce
 from .installer import InstallerError, build_install_plan, main as installer_main, perform_install
 from .input_mode import InputModeError, game_input_status, restore_game_input
+from .input_diagnostic import (
+    arm_input_diagnostic,
+    input_diagnostic_directory,
+    input_diagnostic_status,
+    stop_input_diagnostic,
+    summarize_diagnostic,
+)
 from .lockfile import LockfileError, load_versions
 from .paths import AppPaths
 from .platforms import UnsupportedPlatformError, read_os_release, select_platform
@@ -167,6 +174,18 @@ def _dispatch(args: argparse.Namespace, paths: AppPaths) -> int:
             payload = game_input_status(paths, os.environ).to_json()
         elif args.input_command == "restore":
             payload = restore_game_input(paths, os.environ).to_json()
+        elif args.input_command == "diagnose":
+            artifact = load_versions(REPO / "versions.lock")["wine"]
+            payload = arm_input_diagnostic(paths, artifact).to_json()
+        elif args.input_command == "diagnostic-status":
+            payload = input_diagnostic_status(paths).to_json()
+        elif args.input_command == "diagnostic-stop":
+            payload = stop_input_diagnostic(paths).to_json()
+        elif args.input_command == "summarize":
+            payload = summarize_diagnostic(
+                args.path,
+                input_diagnostic_directory(paths),
+            )
         else:
             raise ValueError("unsupported input command")
         assert_export_safe(payload)
@@ -399,6 +418,10 @@ def _install_application(paths: AppPaths) -> None:
         REPO / "scripts/build-patched-wine.sh",
         temporary_root / "scripts/build-patched-wine.sh",
     )
+    shutil.copy2(
+        REPO / "scripts/build-input-diagnostic-wine.sh",
+        temporary_root / "scripts/build-input-diagnostic-wine.sh",
+    )
     shutil.copytree(REPO / "patches", temporary_root / "patches")
     shutil.copytree(REPO / "platforms", temporary_root / "platforms", ignore=ignore)
     shutil.copyfile(REPO / "versions.lock", temporary_root / "versions.lock")
@@ -447,6 +470,11 @@ def _parser() -> argparse.ArgumentParser:
     input_subcommands = input_command.add_subparsers(dest="input_command", required=True)
     input_subcommands.add_parser("status")
     input_subcommands.add_parser("restore")
+    input_subcommands.add_parser("diagnose")
+    input_subcommands.add_parser("diagnostic-status")
+    input_subcommands.add_parser("diagnostic-stop")
+    input_summary = input_subcommands.add_parser("summarize")
+    input_summary.add_argument("path", type=Path)
     profile = subcommands.add_parser("profile")
     profile_subcommands = profile.add_subparsers(dest="profile_command", required=True)
     profile_subcommands.add_parser("start")

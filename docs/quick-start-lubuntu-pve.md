@@ -280,6 +280,30 @@ profile observes guest state only; it does not change Proxmox. Any host change
 must still be applied by the operator in Proxmox WebUI after the data supports
 that experiment.
 
+### Contextual IME diagnostic (development only)
+
+The current development branch includes an isolated diagnostic Wine runtime;
+normal website launches continue to use the known-good runtime. Build it from
+the installed project assets only when investigating the Chinese gameplay/chat
+boundary:
+
+```bash
+~/.local/share/maplestory-classic/app/scripts/build-input-diagnostic-wine.sh \
+  --base-runtime ~/.local/share/maplestory-classic/tools/wine-11.10-staging-tkg-amd64-wow64-msclassic1 \
+  --output ~/.local/share/maplestory-classic/tools/wine-11.10-staging-tkg-amd64-wow64-msclassic-inputdiag1 \
+  --cache ~/.cache/msclassic-build
+msclassic input diagnose
+```
+
+`diagnose` arms exactly one subsequent official website launch. The binary log
+contains only fixed event categories and monotonic timestamps; it cannot
+contain key identities, typed or composed text, coordinates, window titles,
+launch arguments, URIs, or account data. Check state with
+`msclassic input diagnostic-status`. After the game exits, summarize the
+private `0600` log with `msclassic input summarize PATH`. Do not commit or
+share the raw log. This diagnostic observes behavior only and does not yet fix
+contextual IME routing.
+
 ## 7. Launch through the official website
 
 Open Chromium inside the guest and visit:

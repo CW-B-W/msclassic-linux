@@ -175,6 +175,13 @@ experience. Contextual Wine/X11 routing is under diagnostic development; until
 that diagnostic proves a game-owned chat signal, the project does not claim
 that Chinese can remain selected during gameplay.
 
+On the development branch, `msclassic input diagnose` arms a single
+side-by-side Wine run that records only category/timestamp events. Exercise
+Chinese-selected gameplay, open chat, harmless dummy composition, and closed
+chat in that order. The result is accepted only if IME-open state or
+composition-rectangle lifetime matches the user-confirmed chat boundaries
+exactly; Enter/Escape, screen, timing, and game-memory heuristics are rejected.
+
 Game input mode leaves `Alt+Tab` and `Alt+Shift+Tab` available. It temporarily
 disables other Openbox/LXQt desktop bindings, including the observed
 `Alt+Space` client-menu binding, only while the official Wine launch is

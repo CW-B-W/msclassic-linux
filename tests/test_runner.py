@@ -95,6 +95,7 @@ class RunnerTests(unittest.TestCase):
                 ),
             ),
             mock.patch("msclassic.runner.start_armed_profiler", return_value=None),
+            mock.patch("msclassic.runner.start_armed_input_diagnostic", return_value=None),
         ]
         for patch in self.input_patches:
             patch.start()
@@ -289,6 +290,32 @@ class RunnerTests(unittest.TestCase):
 
         self.assertEqual(result, 0)
         profiler.stop.assert_called_once_with()
+
+    def test_armed_input_diagnostic_uses_only_side_by_side_runtime_and_fd(self):
+        diagnostic = mock.Mock()
+        diagnostic.wine_root = self.paths.tools / "diagnostic-runtime"
+        diagnostic.descriptor = 91
+
+        with (
+            mock.patch("msclassic.runner.start_armed_input_diagnostic", return_value=diagnostic),
+            mock.patch(
+                "msclassic.runner.subprocess.run",
+                return_value=subprocess.CompletedProcess([], 0),
+            ) as invoked,
+        ):
+            result = run_authenticated(
+                LaunchRequest("2982", None, ("safe",)),
+                self.paths,
+            )
+
+        self.assertEqual(result, 0)
+        argv = invoked.call_args.args[0]
+        kwargs = invoked.call_args.kwargs
+        self.assertEqual(argv[0], str(diagnostic.wine_root / "bin/wine"))
+        self.assertEqual(kwargs["env"]["MSCLASSIC_INPUT_DIAGNOSTIC"], "1")
+        self.assertEqual(kwargs["env"]["MSCLASSIC_INPUT_DIAGNOSTIC_FD"], "91")
+        self.assertEqual(kwargs["pass_fds"], (91,))
+        diagnostic.close.assert_called_once_with()
 
     def test_duplicate_launch_is_refused_immediately(self):
         lock_path = self.paths.state / "launch.lock"

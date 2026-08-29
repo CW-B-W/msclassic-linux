@@ -14,6 +14,7 @@ from .input_mode import (
     activate_game_input,
     restore_game_input,
 )
+from .input_diagnostic import start_armed_input_diagnostic
 from .lockfile import load_versions
 from .ngs import inspect_ngs_state
 from .paths import AppPaths
@@ -64,9 +65,10 @@ _REPO = Path(__file__).resolve().parents[2]
 def build_wine_command(
     request: LaunchRequest,
     paths: AppPaths,
+    runtime_root: Path | None = None,
 ) -> tuple[dict[str, str], tuple[str, ...]]:
     artifact = load_versions(_REPO / "versions.lock")["wine"]
-    wine_root = patched_runtime_root(paths, artifact)
+    wine_root = runtime_root or patched_runtime_root(paths, artifact)
     wine = wine_root / "bin/wine"
     executable = paths.client / "Maplestory_Classic.exe"
     environment = {
@@ -109,16 +111,26 @@ def run_authenticated(
             raise RunnerError(
                 "NGS service installation is incomplete; rerun the guest installer"
             )
-        environment, argv = build_wine_command(request, paths)
+        artifact = load_versions(_REPO / "versions.lock")["wine"]
+        diagnostic = start_armed_input_diagnostic(paths, artifact)
+        runtime_root = diagnostic.wine_root if diagnostic is not None else None
+        environment, argv = build_wine_command(request, paths, runtime_root)
+        pass_fds: tuple[int, ...] = ()
+        if diagnostic is not None:
+            environment["MSCLASSIC_INPUT_DIAGNOSTIC"] = "1"
+            environment["MSCLASSIC_INPUT_DIAGNOSTIC_FD"] = str(diagnostic.descriptor)
+            pass_fds = (diagnostic.descriptor,)
+        profile = None
+        profiler = None
         try:
-            profile = activate_game_input(paths, environment)
-        except InputModeError:
-            profile = None
-        try:
-            profiler = start_armed_profiler(paths)
-        except ProfilerError:
-            profiler = None
-        try:
+            try:
+                profile = activate_game_input(paths, environment)
+            except InputModeError:
+                profile = None
+            try:
+                profiler = start_armed_profiler(paths)
+            except ProfilerError:
+                profiler = None
             _write_launch_status(paths, "starting")
             try:
                 completed = subprocess.run(
@@ -129,6 +141,7 @@ def run_authenticated(
                     stdout=subprocess.DEVNULL,
                     stderr=subprocess.DEVNULL,
                     start_new_session=True,
+                    pass_fds=pass_fds,
                     check=False,
                 )
             except OSError:
@@ -142,6 +155,8 @@ def run_authenticated(
                     profiler.stop()
                 except ProfilerError:
                     pass
+            if diagnostic is not None:
+                diagnostic.close()
             if profile is not None and profile.state == "active":
                 restore_game_input(paths, environment)
 

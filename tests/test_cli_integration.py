@@ -12,6 +12,7 @@ from msclassic.approval import GraphicsApprovalError
 from msclassic.cli import _install_application, main
 from msclassic.doctor import GraphicsReport
 from msclassic.input_mode import InputModeStatus
+from msclassic.input_diagnostic import InputDiagnosticStatus
 from msclassic.paths import AppPaths
 from msclassic.profiler import ProfilerStatus
 from msclassic.updater import UpdateCheck
@@ -154,6 +155,48 @@ class CliIntegrationTests(unittest.TestCase):
                 self.assertEqual(json.loads(output), statuses[command].to_json())
                 invoked.assert_called_once()
 
+    def test_input_diagnostic_commands_are_explicit_and_safe(self):
+        cases = {
+            "diagnose": (
+                "arm_input_diagnostic",
+                InputDiagnosticStatus("armed", "The next game launch will capture input event categories"),
+            ),
+            "diagnostic-status": (
+                "input_diagnostic_status",
+                InputDiagnosticStatus("inactive", "No input diagnostic is armed"),
+            ),
+            "diagnostic-stop": (
+                "stop_input_diagnostic",
+                InputDiagnosticStatus("inactive", "No input diagnostic is armed"),
+            ),
+        }
+
+        for command, (function, status) in cases.items():
+            with self.subTest(command=command):
+                with mock.patch(f"msclassic.cli.{function}", return_value=status) as invoked:
+                    code, output, error = self.invoke(["input", command])
+                self.assertEqual(code, 0)
+                self.assertEqual(error, "")
+                self.assertEqual(json.loads(output), status.to_json())
+                invoked.assert_called_once()
+
+    def test_input_summary_prints_no_path_or_free_form_values(self):
+        log = self.root / "state/maplestory-classic/input-diagnostic/input-1.bin"
+        summary = {
+            "schema": 1,
+            "records": 2,
+            "duration_ns": 10,
+            "counts": {"ime_open": 1, "ime_closed": 1},
+        }
+        with mock.patch("msclassic.cli.summarize_diagnostic", return_value=summary) as invoked:
+            code, output, error = self.invoke(["input", "summarize", str(log)])
+
+        self.assertEqual(code, 0)
+        self.assertEqual(error, "")
+        self.assertEqual(json.loads(output), summary)
+        self.assertNotIn(str(log), output)
+        invoked.assert_called_once()
+
     def test_handler_failure_uses_fixed_notification_and_redacted_error(self):
         private_uri = "nexonplug://?game=2982&passarg=private-browser-value"
         with mock.patch(
@@ -225,10 +268,15 @@ class CliIntegrationTests(unittest.TestCase):
 
         installed = paths.data / "app"
         builder = installed / "scripts/build-patched-wine.sh"
+        diagnostic_builder = installed / "scripts/build-input-diagnostic-wine.sh"
         patch = installed / "patches/wine-11.10-ntdll-frame-walk-page-fault-guard.patch"
+        diagnostic_patch = installed / "patches/wine-11.10-msclassic-input-diagnostic.patch"
         self.assertTrue(builder.is_file())
         self.assertTrue(builder.stat().st_mode & 0o100)
         self.assertTrue(patch.is_file())
+        self.assertTrue(diagnostic_builder.is_file())
+        self.assertTrue(diagnostic_builder.stat().st_mode & 0o100)
+        self.assertTrue(diagnostic_patch.is_file())
 
     def test_chromium_policy_is_scoped_to_official_ngm_origin(self):
         policy = json.loads(

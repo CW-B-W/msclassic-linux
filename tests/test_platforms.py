@@ -17,6 +17,25 @@ class PlatformSelectionTests(unittest.TestCase):
         self.assertEqual(adapter.id, "lubuntu-24.04")
         self.assertIn("mesa-utils", adapter.package_names)
         self.assertIn("mesa-vulkan-drivers:i386", adapter.package_names)
+        for package in (
+            "g++",
+            "libx11-dev",
+            "libxext-dev",
+            "libxrender-dev",
+            "libxrandr-dev",
+            "libxi-dev",
+            "libxkbfile-dev",
+            "libxinerama-dev",
+            "libxcursor-dev",
+            "libxcomposite-dev",
+            "libxfixes-dev",
+            "libxxf86vm-dev",
+            "libxshmfence-dev",
+            "libxpresent-dev",
+            "libxdamage-dev",
+            "libxkbregistry-dev",
+        ):
+            self.assertIn(package, adapter.package_names)
         self.assertEqual(
             adapter.chromium_policy_dir,
             "/etc/chromium/policies/managed",

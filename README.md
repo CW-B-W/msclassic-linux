@@ -94,6 +94,9 @@ msclassic update --apply       # explicit client update
 msclassic stop --yes           # stop only this dedicated Wine prefix
 msclassic input status         # inspect temporary Game input mode state
 msclassic input restore        # recover desktop shortcuts after an interrupted game
+msclassic input diagnose       # arm the next website launch for private category-only logging
+msclassic input diagnostic-status
+msclassic input summarize ~/.local/state/maplestory-classic/input-diagnostic/input-N.bin
 msclassic profile start        # arm numeric profiling for the next website launch
 msclassic profile status       # report inactive, armed, or capturing
 msclassic profile stop         # disarm/stop profiling without stopping the game
