@@ -42,12 +42,14 @@ diff --git a/dlls/winex11.drv/event.c b/dlls/winex11.drv/event.c
 index e87403f..b3dcb78 100644
 --- a/dlls/winex11.drv/event.c
 +++ b/dlls/winex11.drv/event.c
-@@ -507,7 +507,12 @@ BOOL X11DRV_ProcessEvents( DWORD mask )
+@@ -507,7 +507,14 @@ BOOL X11DRV_ProcessEvents( DWORD mask )
          }
  
          count++;
 -        if (XFilterEvent( &event, None )) continue;
-+        if (XFilterEvent( &event, None ))
++        if (((event.type != KeyPress && event.type != KeyRelease) ||
++             msclassic_input_context_ime_enabled()) &&
++            XFilterEvent( &event, None ))
 +        {
 +            if (event.type == KeyPress || event.type == KeyRelease)
 +                msclassic_input_diag_record( MSCLASSIC_DIAG_XIM_FILTERED_KEYBOARD );
@@ -77,7 +79,7 @@ new file mode 100644
 index 0000000..4826bf4
 --- /dev/null
 +++ b/dlls/winex11.drv/input_diag.c
-@@ -0,0 +1,63 @@
+@@ -0,0 +1,76 @@
 +/* Privacy-bounded MapleStory input diagnostics. */
 +
 +#if 0
@@ -108,6 +110,19 @@ index 0000000..4826bf4
 +static pthread_once_t diagnostic_once = PTHREAD_ONCE_INIT;
 +static unsigned int diagnostic_sequence;
 +static int diagnostic_fd = -1;
++static int context_ime_enabled = 1;
++
++BOOL msclassic_input_context_ime_enabled(void)
++{
++    return __atomic_load_n( &context_ime_enabled, __ATOMIC_ACQUIRE );
++}
++
++void msclassic_input_context_set_enabled( BOOL enabled )
++{
++    __atomic_store_n( &context_ime_enabled, enabled, __ATOMIC_RELEASE );
++    if (enabled) msclassic_input_diag_record( MSCLASSIC_DIAG_CONTEXT_ATTACHED );
++    else msclassic_input_diag_record( MSCLASSIC_DIAG_CONTEXT_DETACHED );
++}
 +
 +static void init_diagnostic(void)
 +{
@@ -145,7 +160,7 @@ diff --git a/dlls/winex11.drv/x11drv.h b/dlls/winex11.drv/x11drv.h
 index b150e97..83736d2 100644
 --- a/dlls/winex11.drv/x11drv.h
 +++ b/dlls/winex11.drv/x11drv.h
-@@ -919,6 +919,24 @@ extern void xim_set_result_string( HWND hwnd, const char *str, UINT count );
+@@ -919,6 +919,26 @@ extern void xim_set_result_string( HWND hwnd, const char *str, UINT count );
  extern XIC X11DRV_get_ic( HWND hwnd );
  extern void xim_set_focus( HWND hwnd, BOOL focus );
  
@@ -165,6 +180,8 @@ index b150e97..83736d2 100644
 +#define MSCLASSIC_DIAG_NOTIFY_CONTEXT_DETACHED 0x4d534300u
 +#define MSCLASSIC_DIAG_NOTIFY_CONTEXT_ATTACHED 0x4d534301u
 +
++extern BOOL msclassic_input_context_ime_enabled(void);
++extern void msclassic_input_context_set_enabled( BOOL enabled );
 +extern void msclassic_input_diag_record( enum msclassic_input_diag_category category );
 +
  #define XEMBED_MAPPED  (1 << 0)
@@ -177,8 +194,7 @@ index ed18908..81bde40 100644
 @@ -358,9 +358,23 @@ void X11DRV_NotifyIMEStatus( HWND hwnd, UINT status )
  void X11DRV_NotifyIMEStatus( HWND hwnd, UINT status )
  {
--    XIMPreeditState state = status ? XIMPreeditEnable : XIMPreeditDisable;
-+    XIMPreeditState state;
+     XIMPreeditState state = status ? XIMPreeditEnable : XIMPreeditDisable;
      XVaNestedList attr;
      XIC xic;
 -
@@ -188,17 +204,17 @@ index ed18908..81bde40 100644
 +
 +    if (status == MSCLASSIC_DIAG_NOTIFY_CONTEXT_ATTACHED)
 +    {
-+        msclassic_input_diag_record( MSCLASSIC_DIAG_CONTEXT_ATTACHED );
-+        status = TRUE;
++        msclassic_input_context_set_enabled( TRUE );
++        return;
 +    }
-+    else if (status == MSCLASSIC_DIAG_NOTIFY_CONTEXT_DETACHED)
++    if (status == MSCLASSIC_DIAG_NOTIFY_CONTEXT_DETACHED)
 +    {
-+        msclassic_input_diag_record( MSCLASSIC_DIAG_CONTEXT_DETACHED );
-+        status = FALSE;
++        msclassic_input_context_set_enabled( FALSE );
++        return;
 +    }
-+    else if (status) msclassic_input_diag_record( MSCLASSIC_DIAG_IME_OPEN );
++
++    if (status) msclassic_input_diag_record( MSCLASSIC_DIAG_IME_OPEN );
 +    else msclassic_input_diag_record( MSCLASSIC_DIAG_IME_CLOSED );
-+    state = status ? XIMPreeditEnable : XIMPreeditDisable;
 +
      if (!(xic = X11DRV_get_ic( hwnd ))) return;
 @@ -582,6 +596,10 @@ BOOL X11DRV_SetIMECompositionRect( HWND hwnd, RECT rect )

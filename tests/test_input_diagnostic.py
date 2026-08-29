@@ -51,18 +51,16 @@ class InputDiagnosticPatchTests(unittest.TestCase):
             "MSCLASSIC_DIAG_CONTEXT_DETACHED",
         ):
             self.assertIn(f"msclassic_input_diag_record( {marker} )", text)
-        self.assertIn("if (XFilterEvent( &event, None ))", text)
+        self.assertIn("XFilterEvent( &event, None )", text)
         self.assertNotIn("X11DRV_KeyEvent( 0, &event )", text)
         self.assertIn("NtUserNotifyIMEStatus( hwnd, himc ? MSCLASSIC_DIAG_NOTIFY_CONTEXT_ATTACHED :", text)
         self.assertIn("MSCLASSIC_DIAG_NOTIFY_CONTEXT_DETACHED );", text)
         self.assertIn("if (status == MSCLASSIC_DIAG_NOTIFY_CONTEXT_ATTACHED)", text)
-        self.assertIn("status = TRUE;", text)
-        self.assertIn("else if (status == MSCLASSIC_DIAG_NOTIFY_CONTEXT_DETACHED)", text)
-        self.assertIn("status = FALSE;", text)
-        self.assertNotIn(
-            "msclassic_input_diag_record( MSCLASSIC_DIAG_CONTEXT_ATTACHED );\n+        return;",
-            text,
-        )
+        self.assertIn("msclassic_input_context_set_enabled( TRUE );", text)
+        self.assertIn("if (status == MSCLASSIC_DIAG_NOTIFY_CONTEXT_DETACHED)", text)
+        self.assertIn("msclassic_input_context_set_enabled( FALSE );", text)
+        self.assertIn("msclassic_input_context_ime_enabled()", text)
+        self.assertIn("event.type != KeyPress && event.type != KeyRelease", text)
 
     def test_added_diagnostic_code_cannot_record_input_or_authenticated_data(self):
         text = PATCH.read_text(encoding="utf-8")
@@ -201,7 +199,7 @@ class InputDiagnosticLifecycleTests(unittest.TestCase):
         self.temp.cleanup()
 
     def test_arm_start_and_close_use_private_one_shot_state(self):
-        runtime = self.paths.tools / "wine-test-msclassic-inputcandidate1"
+        runtime = self.paths.tools / "wine-test-msclassic-inputcandidate2"
         with (
             mock.patch("msclassic.input_diagnostic.diagnostic_runtime_valid", return_value=True),
             mock.patch("msclassic.input_diagnostic.diagnostic_runtime_root", return_value=runtime),

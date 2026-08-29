@@ -123,7 +123,7 @@ class PatchedRuntimeTests(unittest.TestCase):
             )
             self.assertEqual(
                 diagnostic,
-                self.paths.tools / "wine-test-msclassic-inputcandidate1",
+                self.paths.tools / "wine-test-msclassic-inputcandidate2",
             )
             self.assertTrue(diagnostic_runtime_valid(self.paths, self.artifact))
 
