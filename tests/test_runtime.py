@@ -9,6 +9,7 @@ from unittest import mock
 from msclassic.lockfile import Artifact
 from msclassic.paths import AppPaths
 from msclassic.runtime import (
+    DIAGNOSTIC_IMM32_RELATIVE,
     DIAGNOSTIC_STAMP,
     DIAGNOSTIC_WINEX11_RELATIVE,
     diagnostic_runtime_manifest,
@@ -100,13 +101,19 @@ class PatchedRuntimeTests(unittest.TestCase):
         driver = diagnostic / DIAGNOSTIC_WINEX11_RELATIVE
         driver.parent.mkdir(parents=True, exist_ok=True)
         driver.write_bytes(b"diagnostic-driver")
+        imm32 = diagnostic / DIAGNOSTIC_IMM32_RELATIVE
+        imm32.parent.mkdir(parents=True, exist_ok=True)
+        imm32.write_bytes(b"diagnostic-imm32")
         expected_ntdll = hashlib.sha256(b"x" * PATCHED_NTDLL_SIZE).hexdigest()
         expected_driver = hashlib.sha256(b"diagnostic-driver").hexdigest()
+        expected_imm32 = hashlib.sha256(b"diagnostic-imm32").hexdigest()
 
         with (
             mock.patch("msclassic.runtime.PATCHED_NTDLL_SHA256", expected_ntdll),
             mock.patch("msclassic.runtime.DIAGNOSTIC_WINEX11_SHA256", expected_driver),
             mock.patch("msclassic.runtime.DIAGNOSTIC_WINEX11_SIZE", len(b"diagnostic-driver")),
+            mock.patch("msclassic.runtime.DIAGNOSTIC_IMM32_SHA256", expected_imm32),
+            mock.patch("msclassic.runtime.DIAGNOSTIC_IMM32_SIZE", len(b"diagnostic-imm32")),
         ):
             (diagnostic / PATCH_STAMP).write_text(
                 json.dumps(patched_runtime_manifest(self.artifact)), encoding="utf-8"
@@ -116,9 +123,12 @@ class PatchedRuntimeTests(unittest.TestCase):
             )
             self.assertEqual(
                 diagnostic,
-                self.paths.tools / "wine-test-msclassic-inputdiag1",
+                self.paths.tools / "wine-test-msclassic-inputcandidate1",
             )
             self.assertTrue(diagnostic_runtime_valid(self.paths, self.artifact))
 
             driver.write_bytes(b"changed")
+            self.assertFalse(diagnostic_runtime_valid(self.paths, self.artifact))
+            driver.write_bytes(b"diagnostic-driver")
+            imm32.write_bytes(b"changed")
             self.assertFalse(diagnostic_runtime_valid(self.paths, self.artifact))

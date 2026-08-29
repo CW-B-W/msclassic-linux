@@ -27,10 +27,11 @@ BUILDER = REPO / "scripts/build-input-diagnostic-wine.sh"
 
 
 class InputDiagnosticPatchTests(unittest.TestCase):
-    def test_patch_has_all_four_observation_points_and_no_event_routing_change(self):
+    def test_patch_observes_context_and_routes_xim_state_without_synthetic_keys(self):
         text = PATCH.read_text(encoding="utf-8")
 
         for source in (
+            "dlls/imm32/imm.c",
             "dlls/winex11.drv/Makefile.in",
             "dlls/winex11.drv/event.c",
             "dlls/winex11.drv/input_diag.c",
@@ -46,10 +47,22 @@ class InputDiagnosticPatchTests(unittest.TestCase):
             "MSCLASSIC_DIAG_COMPOSITION_RECT_CLEAR",
             "MSCLASSIC_DIAG_FOCUS_IN",
             "MSCLASSIC_DIAG_FOCUS_OUT",
+            "MSCLASSIC_DIAG_CONTEXT_ATTACHED",
+            "MSCLASSIC_DIAG_CONTEXT_DETACHED",
         ):
             self.assertIn(f"msclassic_input_diag_record( {marker} )", text)
         self.assertIn("if (XFilterEvent( &event, None ))", text)
         self.assertNotIn("X11DRV_KeyEvent( 0, &event )", text)
+        self.assertIn("NtUserNotifyIMEStatus( hwnd, himc ? MSCLASSIC_DIAG_NOTIFY_CONTEXT_ATTACHED :", text)
+        self.assertIn("MSCLASSIC_DIAG_NOTIFY_CONTEXT_DETACHED );", text)
+        self.assertIn("if (status == MSCLASSIC_DIAG_NOTIFY_CONTEXT_ATTACHED)", text)
+        self.assertIn("status = TRUE;", text)
+        self.assertIn("else if (status == MSCLASSIC_DIAG_NOTIFY_CONTEXT_DETACHED)", text)
+        self.assertIn("status = FALSE;", text)
+        self.assertNotIn(
+            "msclassic_input_diag_record( MSCLASSIC_DIAG_CONTEXT_ATTACHED );\n+        return;",
+            text,
+        )
 
     def test_added_diagnostic_code_cannot_record_input_or_authenticated_data(self):
         text = PATCH.read_text(encoding="utf-8")
@@ -84,6 +97,12 @@ class InputDiagnosticPatchTests(unittest.TestCase):
         self.assertIn("wine-tkg-inputdiag-11.10", text)
         self.assertIn("git -C \"$source_dir\" apply --check", text)
         self.assertIn("dlls/winex11.drv/winex11.so", text)
+        self.assertIn("dlls/imm32/x86_64-windows/imm32.dll", text)
+        self.assertIn("989c1e1d2358ae47b3fe700631551a1b4563e4b2db738d26060c97a37f11aedf", text)
+        self.assertIn("lib/wine/x86_64-windows/imm32.dll", text)
+        self.assertIn("x86_64-w64-mingw32-objcopy --remove-section .buildid", text)
+        self.assertIn("seek=136", text)
+        self.assertIn("seek=216", text)
         self.assertIn("cp -a --reflink=auto", text)
         self.assertIn("mv \"$staged_runtime\" \"$output_runtime\"", text)
 
@@ -107,18 +126,31 @@ class InputDiagnosticRecordTests(unittest.TestCase):
                 (10_000, 1, 1, 1),
                 (12_000, 2, 2, 1),
                 (15_000, 3, 4, 1),
+                (18_000, 4, 8, 1),
+                (20_000, 5, 9, 1),
             )
         )
 
         records = parse_diagnostic_records(self.log, self.directory)
         summary = summarize_diagnostic(self.log, self.directory)
 
-        self.assertEqual(records, ((10_000, 1, 1), (12_000, 2, 2), (15_000, 3, 4)))
-        self.assertEqual(summary["records"], 3)
-        self.assertEqual(summary["duration_ns"], 5_000)
+        self.assertEqual(
+            records,
+            (
+                (10_000, 1, 1),
+                (12_000, 2, 2),
+                (15_000, 3, 4),
+                (18_000, 4, 8),
+                (20_000, 5, 9),
+            ),
+        )
+        self.assertEqual(summary["records"], 5)
+        self.assertEqual(summary["duration_ns"], 10_000)
         self.assertEqual(summary["counts"][CATEGORY_NAMES[1]], 1)
         self.assertEqual(summary["counts"][CATEGORY_NAMES[2]], 1)
         self.assertEqual(summary["counts"][CATEGORY_NAMES[4]], 1)
+        self.assertEqual(summary["counts"]["context_attached"], 1)
+        self.assertEqual(summary["counts"]["context_detached"], 1)
         self.assertNotIn(str(self.log), repr(summary))
 
     def test_parser_rejects_symlink_mode_size_schema_and_unknown_category(self):
@@ -169,7 +201,7 @@ class InputDiagnosticLifecycleTests(unittest.TestCase):
         self.temp.cleanup()
 
     def test_arm_start_and_close_use_private_one_shot_state(self):
-        runtime = self.paths.tools / "wine-test-msclassic-inputdiag1"
+        runtime = self.paths.tools / "wine-test-msclassic-inputcandidate1"
         with (
             mock.patch("msclassic.input_diagnostic.diagnostic_runtime_valid", return_value=True),
             mock.patch("msclassic.input_diagnostic.diagnostic_runtime_root", return_value=runtime),

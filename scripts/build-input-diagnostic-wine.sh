@@ -45,18 +45,23 @@ required_build_cache="/home/ubuntu/.cache/msclassic-build"
 source_url="https://github.com/Kron4ek/wine-tkg.git"
 source_commit="4b12965ca7e78b8e45eee5f835c72963b3ce351d"
 patch_file="$project_root/patches/wine-11.10-msclassic-input-diagnostic.patch"
-expected_patch_sha="cc4f9c670b2ba82955862f7997539809dd087a8b34cd1d02636176b5217454a8"
+expected_patch_sha="282e5f2b399bd574c89ab0592c386057865b61f1a0259d8e473f92a8e9b8ed55"
 expected_base_winex11_sha="5e444a3ef68c4151cdcba3c4653ef43a949cac8dc6615bca940806823fd1a0a5"
+expected_base_imm32_sha="989c1e1d2358ae47b3fe700631551a1b4563e4b2db738d26060c97a37f11aedf"
 expected_base_ntdll_sha="2bb7613fead5e50b4fa47e65f1d2856a5b8d8301a58a806d1a7214451004123d"
-expected_winex11_sha="6153c26e860a46c2fdf4944f3c4309453649bf0cf75df79d899f248973c130ce"
+expected_winex11_sha="ae31e776da16156b91ac71981d6b5395a41fc068b5c1ff53bb4ab09c737dd3bd"
 expected_winex11_size="545568"
+expected_imm32_sha="6ffb4ef5528e48d6e79d7d9da0fe7d0d86f2cfa3ece0847f886942583f28a5aa"
+expected_imm32_size="232390"
 source_dir="$build_cache/wine-tkg-inputdiag-11.10"
-build_dir="$build_cache/wine-tkg-inputdiag-build-11.10-v1"
+build_dir="$build_cache/wine-tkg-inputdiag-build-11.10-v2"
 base_winex11="$base_runtime/lib/wine/x86_64-unix/winex11.so"
+base_imm32="$base_runtime/lib/wine/x86_64-windows/imm32.dll"
 base_ntdll="$base_runtime/lib/wine/x86_64-windows/ntdll.dll"
 built_winex11="$build_dir/dlls/winex11.drv/winex11.so"
+built_imm32="$build_dir/dlls/imm32/x86_64-windows/imm32.dll"
 
-for command in git make gcc g++ bison flex strip sha256sum; do
+for command in git make gcc g++ bison flex strip sha256sum x86_64-w64-mingw32-objcopy dd od tr; do
   command -v "$command" >/dev/null || {
     printf 'ERROR: missing input-diagnostic build command: %s\n' "$command" >&2
     exit 1
@@ -69,6 +74,10 @@ done
 }
 printf '%s  %s\n' "$expected_base_winex11_sha" "$base_winex11" | sha256sum --check --status || {
   printf 'ERROR: base Wine X11 driver does not match the locked input.\n' >&2
+  exit 1
+}
+printf '%s  %s\n' "$expected_base_imm32_sha" "$base_imm32" | sha256sum --check --status || {
+  printf 'ERROR: base Wine IMM32 does not match the locked input.\n' >&2
   exit 1
 }
 printf '%s  %s\n' "$expected_base_ntdll_sha" "$base_ntdll" | sha256sum --check --status || {
@@ -114,12 +123,14 @@ git -C "$source_dir" apply --check "$patch_file"
 git -C "$source_dir" apply "$patch_file"
 patch_applied=1
 staged_winex11=""
+staged_imm32=""
 staged_runtime=""
 cleanup() {
   if [[ "${patch_applied:-0}" == 1 ]]; then
     git -C "$source_dir" apply --reverse "$patch_file" >/dev/null 2>&1 || true
   fi
   [[ -z "$staged_winex11" || ! -e "$staged_winex11" ]] || rm -f "$staged_winex11"
+  [[ -z "$staged_imm32" || ! -e "$staged_imm32" ]] || rm -f "$staged_imm32"
   [[ -z "$staged_runtime" || ! -d "$staged_runtime" ]] || rm -rf "$staged_runtime"
 }
 trap cleanup EXIT
@@ -135,7 +146,9 @@ if [[ ! -f "$build_dir/Makefile" ]]; then
       --without-gnutls
   )
 fi
-make -C "$build_dir" -j"$(getconf _NPROCESSORS_ONLN)" dlls/winex11.drv/winex11.so
+make -C "$build_dir" -j"$(getconf _NPROCESSORS_ONLN)" \
+  dlls/winex11.drv/winex11.so \
+  dlls/imm32/x86_64-windows/imm32.dll
 
 staged_winex11="$(mktemp "$build_cache/.winex11-inputdiag-XXXXXX.so")"
 cp "$built_winex11" "$staged_winex11"
@@ -149,13 +162,33 @@ printf '%s  %s\n' "$expected_winex11_sha" "$staged_winex11" | sha256sum --check 
   exit 1
 }
 
+staged_imm32="$(mktemp "$build_cache/.imm32-inputdiag-XXXXXX.dll")"
+cp "$built_imm32" "$staged_imm32"
+strip --strip-debug "$staged_imm32"
+x86_64-w64-mingw32-objcopy --remove-section .buildid "$staged_imm32"
+[[ "$(od -An -j 128 -N 4 -t x1 "$staged_imm32" | tr -d ' \n')" == "50450000" ]] || {
+  printf 'ERROR: input diagnostic IMM32 has an unexpected PE header.\n' >&2
+  exit 1
+}
+printf '\0\0\0\0' | dd of="$staged_imm32" bs=1 seek=136 conv=notrunc status=none
+printf '\0\0\0\0' | dd of="$staged_imm32" bs=1 seek=216 conv=notrunc status=none
+[[ "$(stat -c '%s' "$staged_imm32")" == "$expected_imm32_size" ]] || {
+  printf 'ERROR: input diagnostic IMM32 size is not reproducible.\n' >&2
+  exit 1
+}
+printf '%s  %s\n' "$expected_imm32_sha" "$staged_imm32" | sha256sum --check --status || {
+  printf 'ERROR: input diagnostic IMM32 is not reproducible.\n' >&2
+  exit 1
+}
+
 output_parent="$(dirname "$output_runtime")"
 mkdir -p -m 700 "$output_parent"
 staged_runtime="$(mktemp -d "$output_parent/.wine-inputdiag-runtime-XXXXXX")"
 cp -a --reflink=auto "$base_runtime/." "$staged_runtime/"
 install -m 0644 "$staged_winex11" "$staged_runtime/lib/wine/x86_64-unix/winex11.so"
+install -m 0644 "$staged_imm32" "$staged_runtime/lib/wine/x86_64-windows/imm32.dll"
 printf '%s\n' \
-  '{"base_digest":"5355cff72783e30f96e3e47aef440b0408a7bf550e53a00c8df139186f37ea25","base_winex11_sha256":"5e444a3ef68c4151cdcba3c4653ef43a949cac8dc6615bca940806823fd1a0a5","input_patch_sha256":"cc4f9c670b2ba82955862f7997539809dd087a8b34cd1d02636176b5217454a8","schema":1,"source_commit":"4b12965ca7e78b8e45eee5f835c72963b3ce351d","winex11_sha256":"6153c26e860a46c2fdf4944f3c4309453649bf0cf75df79d899f248973c130ce"}' \
+  '{"base_digest":"5355cff72783e30f96e3e47aef440b0408a7bf550e53a00c8df139186f37ea25","base_imm32_sha256":"989c1e1d2358ae47b3fe700631551a1b4563e4b2db738d26060c97a37f11aedf","base_winex11_sha256":"5e444a3ef68c4151cdcba3c4653ef43a949cac8dc6615bca940806823fd1a0a5","imm32_sha256":"6ffb4ef5528e48d6e79d7d9da0fe7d0d86f2cfa3ece0847f886942583f28a5aa","input_patch_sha256":"282e5f2b399bd574c89ab0592c386057865b61f1a0259d8e473f92a8e9b8ed55","schema":1,"source_commit":"4b12965ca7e78b8e45eee5f835c72963b3ce351d","winex11_sha256":"ae31e776da16156b91ac71981d6b5395a41fc068b5c1ff53bb4ab09c737dd3bd"}' \
   > "$staged_runtime/.msclassic-input-diagnostic.json"
 chmod 0600 "$staged_runtime/.msclassic-input-diagnostic.json"
 mv "$staged_runtime" "$output_runtime"

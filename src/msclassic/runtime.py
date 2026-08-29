@@ -14,17 +14,21 @@ SOURCE_COMMIT = "4b12965ca7e78b8e45eee5f835c72963b3ce351d"
 PATCHED_BUILD_HOME = Path("/home/ubuntu")
 PATCHED_BUILD_CACHE = PATCHED_BUILD_HOME / ".cache/msclassic-build"
 PATCHED_RUNTIME_SUFFIX = "-msclassic1"
-DIAGNOSTIC_RUNTIME_SUFFIX = "-msclassic-inputdiag1"
+DIAGNOSTIC_RUNTIME_SUFFIX = "-msclassic-inputcandidate1"
 PATCHED_NTDLL_SHA256 = "2bb7613fead5e50b4fa47e65f1d2856a5b8d8301a58a806d1a7214451004123d"
 PATCHED_NTDLL_SIZE = 1_101_568
 PATCH_STAMP = ".msclassic-runtime.json"
 NTDLL_RELATIVE = Path("lib/wine/x86_64-windows/ntdll.dll")
 DIAGNOSTIC_STAMP = ".msclassic-input-diagnostic.json"
 DIAGNOSTIC_WINEX11_RELATIVE = Path("lib/wine/x86_64-unix/winex11.so")
+DIAGNOSTIC_IMM32_RELATIVE = Path("lib/wine/x86_64-windows/imm32.dll")
 DIAGNOSTIC_BASE_WINEX11_SHA256 = "5e444a3ef68c4151cdcba3c4653ef43a949cac8dc6615bca940806823fd1a0a5"
-DIAGNOSTIC_PATCH_SHA256 = "cc4f9c670b2ba82955862f7997539809dd087a8b34cd1d02636176b5217454a8"
-DIAGNOSTIC_WINEX11_SHA256 = "6153c26e860a46c2fdf4944f3c4309453649bf0cf75df79d899f248973c130ce"
+DIAGNOSTIC_BASE_IMM32_SHA256 = "989c1e1d2358ae47b3fe700631551a1b4563e4b2db738d26060c97a37f11aedf"
+DIAGNOSTIC_PATCH_SHA256 = "282e5f2b399bd574c89ab0592c386057865b61f1a0259d8e473f92a8e9b8ed55"
+DIAGNOSTIC_WINEX11_SHA256 = "ae31e776da16156b91ac71981d6b5395a41fc068b5c1ff53bb4ab09c737dd3bd"
 DIAGNOSTIC_WINEX11_SIZE = 545_568
+DIAGNOSTIC_IMM32_SHA256 = "6ffb4ef5528e48d6e79d7d9da0fe7d0d86f2cfa3ece0847f886942583f28a5aa"
+DIAGNOSTIC_IMM32_SIZE = 232_390
 
 
 def patched_runtime_root(paths: AppPaths, artifact: Artifact) -> Path:
@@ -58,8 +62,10 @@ def diagnostic_runtime_manifest(artifact: Artifact) -> dict[str, object]:
         "base_digest": artifact.digest,
         "source_commit": SOURCE_COMMIT,
         "base_winex11_sha256": DIAGNOSTIC_BASE_WINEX11_SHA256,
+        "base_imm32_sha256": DIAGNOSTIC_BASE_IMM32_SHA256,
         "input_patch_sha256": DIAGNOSTIC_PATCH_SHA256,
         "winex11_sha256": DIAGNOSTIC_WINEX11_SHA256,
+        "imm32_sha256": DIAGNOSTIC_IMM32_SHA256,
     }
 
 
@@ -83,7 +89,16 @@ def diagnostic_runtime_valid(paths: AppPaths, artifact: Artifact) -> bool:
         if driver.stat().st_size != DIAGNOSTIC_WINEX11_SIZE:
             return False
         with driver.open("rb") as stream:
-            return hashlib.file_digest(stream, "sha256").hexdigest() == DIAGNOSTIC_WINEX11_SHA256
+            if hashlib.file_digest(stream, "sha256").hexdigest() != DIAGNOSTIC_WINEX11_SHA256:
+                return False
+    except OSError:
+        return False
+    imm32 = root / DIAGNOSTIC_IMM32_RELATIVE
+    try:
+        if imm32.stat().st_size != DIAGNOSTIC_IMM32_SIZE:
+            return False
+        with imm32.open("rb") as stream:
+            return hashlib.file_digest(stream, "sha256").hexdigest() == DIAGNOSTIC_IMM32_SHA256
     except OSError:
         return False
 

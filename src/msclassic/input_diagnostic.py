@@ -27,6 +27,8 @@ CATEGORY_NAMES = {
     5: "composition_rect_clear",
     6: "focus_in",
     7: "focus_out",
+    8: "context_attached",
+    9: "context_detached",
 }
 _MAX_LOG_SIZE = 64 * 1024 * 1024
 _LOG_NAME = re.compile(r"input-[0-9]+\.bin\Z")
