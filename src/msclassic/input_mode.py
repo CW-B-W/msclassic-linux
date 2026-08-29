@@ -1,11 +1,9 @@
 from __future__ import annotations
 
 import base64
-import configparser
-import io
 import json
 import os
-import shutil
+import shlex
 import subprocess
 import tempfile
 from dataclasses import dataclass
@@ -30,11 +28,19 @@ class InputModeStatus:
 
 
 @dataclass(frozen=True)
+class LxqtAction:
+    action_id: int
+    shortcut: str
+    description: str
+    enabled: bool
+    action_type: str
+    target: str
+
+
+@dataclass(frozen=True)
 class DesktopPaths:
     openbox: Path
-    lxqt: Path
     system_openbox: Path
-    system_lxqt: Path
     transaction: Path
 
 
@@ -45,30 +51,17 @@ class FileSnapshot:
     mode: int
 
 
+@dataclass(frozen=True)
+class InputTransaction:
+    openbox: FileSnapshot
+    lxqt_actions: tuple[tuple[int, bool], ...]
+
+
 SYSTEM_OPENBOX = Path("/etc/xdg/openbox/rc.xml")
-SYSTEM_LXQT = Path("/etc/xdg/lxqt/globalkeyshortcuts.conf/globalkeyshortcuts.conf")
-_LXQT_SERVICE = "app-lxqt\\x2dglobalkeyshortcuts@autostart.service"
-
-
-def deactivate_fcitx(environment: Mapping[str, str]) -> InputModeStatus:
-    command = shutil.which("fcitx5-remote")
-    if not command or not environment.get("DBUS_SESSION_BUS_ADDRESS"):
-        return InputModeStatus("unavailable", "Fcitx is unavailable")
-    try:
-        result = subprocess.run(
-            [command, "-c"],
-            shell=False,
-            env=dict(environment),
-            stdin=subprocess.DEVNULL,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            check=False,
-        )
-    except OSError:
-        return InputModeStatus("unavailable", "Fcitx is unavailable")
-    if result.returncode != 0:
-        return InputModeStatus("unavailable", "Fcitx is unavailable")
-    return InputModeStatus("prepared", "Fcitx was deactivated")
+_LXQT_SERVICE = "org.lxqt.global_key_shortcuts"
+_LXQT_PATH = "/daemon"
+_LXQT_INTERFACE = "org.lxqt.global_key_shortcuts.daemon"
+_LXQT_SIGNATURE = "a{t(ssbss)}"
 
 
 def activate_game_input(
@@ -81,25 +74,54 @@ def activate_game_input(
             return restored
     if not _session_supported(environment):
         return InputModeStatus("unavailable", "Lubuntu X11 input profile is unavailable")
+
+    openbox = _capture_file(desktop.openbox)
+    profile = _transform_openbox(_profile_source(desktop.openbox, desktop.system_openbox))
+    lxqt_available = True
     try:
-        snapshots = _capture_snapshots(desktop)
-        profiles = {
-            "openbox": _transform_openbox(_profile_source(desktop.openbox, desktop.system_openbox)),
-            "lxqt": _transform_lxqt(_profile_source(desktop.lxqt, desktop.system_lxqt)),
-        }
-        _write_transaction(desktop.transaction, snapshots)
-        _atomic_write(desktop.openbox, profiles["openbox"], _profile_mode(snapshots["openbox"]))
-        _atomic_write(desktop.lxqt, profiles["lxqt"], _profile_mode(snapshots["lxqt"]))
-        _reload_desktop(environment)
+        actions = _list_lxqt_actions(environment)
+    except InputModeError:
+        actions = ()
+        lxqt_available = False
+    transaction = InputTransaction(
+        openbox,
+        tuple((action.action_id, action.enabled) for action in actions),
+    )
+
+    try:
+        _write_transaction(desktop.transaction, transaction)
+        _atomic_write(desktop.openbox, profile, _profile_mode(openbox))
+        _reload_openbox(environment)
     except (InputModeError, OSError):
-        if desktop.transaction.exists():
-            try:
-                _restore_snapshots(desktop, _read_transaction(desktop.transaction))
-                _reload_desktop(environment, allow_failure=True)
-                desktop.transaction.unlink(missing_ok=True)
-            except (InputModeError, OSError):
-                pass
+        _restore_after_activation_failure(desktop, transaction, environment)
         return InputModeStatus("unavailable", "Game input profile was not applied")
+
+    changed: list[tuple[int, bool]] = []
+    if lxqt_available:
+        try:
+            for action in actions:
+                if action.enabled and not _is_hardware_action(action):
+                    changed.append((action.action_id, action.enabled))
+                    _set_lxqt_action_enabled(action.action_id, False, environment)
+        except InputModeError:
+            for action_id, enabled in reversed(changed):
+                try:
+                    _set_lxqt_action_enabled(action_id, enabled, environment)
+                except InputModeError:
+                    pass
+            lxqt_available = False
+            transaction = InputTransaction(openbox, ())
+            try:
+                _write_transaction(desktop.transaction, transaction)
+            except OSError:
+                _restore_after_activation_failure(desktop, transaction, environment)
+                return InputModeStatus("unavailable", "Game input profile was not applied")
+
+    if not lxqt_available:
+        return InputModeStatus(
+            "active",
+            "Temporary Openbox profile is active; LXQt shortcuts unavailable",
+        )
     return InputModeStatus("active", "Temporary game input profile is active")
 
 
@@ -110,12 +132,27 @@ def restore_game_input(
     if not desktop.transaction.exists():
         return InputModeStatus("inactive", "No game input profile is active")
     try:
-        snapshots = _read_transaction(desktop.transaction)
-        _restore_snapshots(desktop, snapshots)
+        transaction = _read_transaction(desktop.transaction)
+    except InputModeError:
+        return InputModeStatus("unavailable", "Game input profile restoration failed")
+
+    failed = False
+    try:
+        _restore_file(desktop.openbox, transaction.openbox)
         if _session_supported(environment):
-            _reload_desktop(environment)
-        desktop.transaction.unlink()
+            _reload_openbox(environment)
     except (InputModeError, OSError):
+        failed = True
+    for action_id, enabled in transaction.lxqt_actions:
+        try:
+            _set_lxqt_action_enabled(action_id, enabled, environment)
+        except InputModeError:
+            failed = True
+    if failed:
+        return InputModeStatus("unavailable", "Game input profile restoration failed")
+    try:
+        desktop.transaction.unlink()
+    except OSError:
         return InputModeStatus("unavailable", "Game input profile restoration failed")
     return InputModeStatus("inactive", "Game input profile was restored")
 
@@ -137,9 +174,7 @@ def _desktop_paths(paths: AppPaths, environment: Mapping[str, str]) -> DesktopPa
     config = Path(environment.get("XDG_CONFIG_HOME", paths.home / ".config"))
     return DesktopPaths(
         openbox=config / "openbox/rc.xml",
-        lxqt=config / "lxqt/globalkeyshortcuts.conf",
         system_openbox=SYSTEM_OPENBOX,
-        system_lxqt=SYSTEM_LXQT,
         transaction=paths.state / "input-profile/active.json",
     )
 
@@ -151,9 +186,7 @@ def _session_supported(environment: Mapping[str, str]) -> bool:
         or not environment.get("XDG_RUNTIME_DIR")
     ):
         return False
-    return _command_ok(["pgrep", "-x", "openbox"], environment) and _command_ok(
-        ["pgrep", "-f", "^/usr/bin/lxqt-globalkeysd( |$)"], environment
-    )
+    return _command_ok(["pgrep", "-x", "openbox"], environment)
 
 
 def _command_ok(argv: list[str], environment: Mapping[str, str]) -> bool:
@@ -172,22 +205,120 @@ def _command_ok(argv: list[str], environment: Mapping[str, str]) -> bool:
     return result.returncode == 0
 
 
-def _reload_desktop(environment: Mapping[str, str], *, allow_failure: bool = False) -> None:
-    commands = (
-        ["openbox", "--reconfigure"],
-        ["systemctl", "--user", "restart", _LXQT_SERVICE],
-        ["pgrep", "-f", "^/usr/bin/lxqt-globalkeysd( |$)"],
+def _reload_openbox(
+    environment: Mapping[str, str], *, allow_failure: bool = False
+) -> None:
+    if not _command_ok(["openbox", "--reconfigure"], environment) and not allow_failure:
+        raise InputModeError("Openbox shortcut profile reload failed")
+
+
+def _list_lxqt_actions(environment: Mapping[str, str]) -> tuple[LxqtAction, ...]:
+    result = _busctl(
+        [
+            "call",
+            _LXQT_SERVICE,
+            _LXQT_PATH,
+            _LXQT_INTERFACE,
+            "getAllActions",
+        ],
+        environment,
     )
-    for argv in commands:
-        if not _command_ok(argv, environment) and not allow_failure:
-            raise InputModeError("desktop shortcut profile reload failed")
+    return _parse_lxqt_actions(result.stdout)
 
 
-def _capture_snapshots(desktop: DesktopPaths) -> dict[str, FileSnapshot]:
-    return {
-        "openbox": _capture_file(desktop.openbox),
-        "lxqt": _capture_file(desktop.lxqt),
-    }
+def _set_lxqt_action_enabled(
+    action_id: int, enabled: bool, environment: Mapping[str, str]
+) -> None:
+    result = _busctl(
+        [
+            "call",
+            _LXQT_SERVICE,
+            _LXQT_PATH,
+            _LXQT_INTERFACE,
+            "enableAction",
+            "tb",
+            str(action_id),
+            "true" if enabled else "false",
+        ],
+        environment,
+    )
+    if result.stdout.split() != ["b", "true"]:
+        raise InputModeError("LXQt shortcut state change failed")
+
+
+def _busctl(
+    arguments: list[str], environment: Mapping[str, str]
+) -> subprocess.CompletedProcess[str]:
+    try:
+        result = subprocess.run(
+            ["busctl", "--user", *arguments],
+            shell=False,
+            env=dict(environment),
+            stdin=subprocess.DEVNULL,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+    except OSError as exc:
+        raise InputModeError("LXQt shortcut D-Bus interface is unavailable") from exc
+    if result.returncode != 0:
+        raise InputModeError("LXQt shortcut D-Bus operation failed")
+    return result
+
+
+def _parse_lxqt_actions(output: str) -> tuple[LxqtAction, ...]:
+    try:
+        fields = shlex.split(output, posix=True)
+    except ValueError as exc:
+        raise InputModeError("LXQt shortcut reply is malformed") from exc
+    if len(fields) < 2 or fields[0] != _LXQT_SIGNATURE:
+        raise InputModeError("LXQt shortcut reply is malformed")
+    try:
+        count = int(fields[1], 10)
+    except ValueError as exc:
+        raise InputModeError("LXQt shortcut reply is malformed") from exc
+    if count < 0 or count > 4096 or len(fields) != 2 + count * 6:
+        raise InputModeError("LXQt shortcut reply is malformed")
+
+    actions: list[LxqtAction] = []
+    seen: set[int] = set()
+    for offset in range(2, len(fields), 6):
+        raw_id, shortcut, description, raw_enabled, action_type, target = fields[
+            offset : offset + 6
+        ]
+        try:
+            action_id = int(raw_id, 10)
+        except ValueError as exc:
+            raise InputModeError("LXQt shortcut reply is malformed") from exc
+        if (
+            action_id < 0
+            or action_id > (2**64 - 1)
+            or action_id in seen
+            or raw_enabled not in {"true", "false"}
+        ):
+            raise InputModeError("LXQt shortcut reply is malformed")
+        seen.add(action_id)
+        actions.append(
+            LxqtAction(
+                action_id,
+                shortcut,
+                description,
+                raw_enabled == "true",
+                action_type,
+                target,
+            )
+        )
+    return tuple(actions)
+
+
+def _is_hardware_action(action: LxqtAction) -> bool:
+    if action.shortcut.startswith("XF86"):
+        return True
+    try:
+        command = shlex.split(action.target, posix=True)
+    except ValueError:
+        return False
+    return bool(command) and Path(command[0]).name == "lxqt-config-brightness"
 
 
 def _capture_file(path: Path) -> FileSnapshot:
@@ -210,50 +341,102 @@ def _profile_mode(snapshot: FileSnapshot) -> int:
     return snapshot.mode if snapshot.existed else 0o600
 
 
-def _write_transaction(path: Path, snapshots: Mapping[str, FileSnapshot]) -> None:
+def _write_transaction(path: Path, transaction: InputTransaction) -> None:
     payload = {
-        "schema": 1,
-        "files": {
-            name: {
-                "existed": snapshot.existed,
-                "content": base64.b64encode(snapshot.content).decode("ascii"),
-                "mode": snapshot.mode,
-            }
-            for name, snapshot in snapshots.items()
+        "schema": 2,
+        "openbox": {
+            "existed": transaction.openbox.existed,
+            "content": base64.b64encode(transaction.openbox.content).decode("ascii"),
+            "mode": transaction.openbox.mode,
         },
+        "lxqt_actions": [
+            {"id": action_id, "enabled": enabled}
+            for action_id, enabled in transaction.lxqt_actions
+        ],
     }
-    _atomic_write(path, (json.dumps(payload, sort_keys=True) + "\n").encode("utf-8"), 0o600)
+    _atomic_write(
+        path,
+        (json.dumps(payload, sort_keys=True) + "\n").encode("utf-8"),
+        0o600,
+    )
 
 
-def _read_transaction(path: Path) -> dict[str, FileSnapshot]:
+def _read_transaction(path: Path) -> InputTransaction:
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
-        files = payload["files"]
-        if payload["schema"] != 1 or set(files) != {"openbox", "lxqt"}:
+        if not isinstance(payload, dict) or set(payload) != {
+            "schema",
+            "openbox",
+            "lxqt_actions",
+        }:
             raise ValueError
-        return {
-            name: FileSnapshot(
-                bool(files[name]["existed"]),
-                base64.b64decode(files[name]["content"], validate=True),
-                int(files[name]["mode"]),
-            )
-            for name in ("openbox", "lxqt")
-        }
+        if payload["schema"] != 2:
+            raise ValueError
+        raw_openbox = payload["openbox"]
+        if not isinstance(raw_openbox, dict) or set(raw_openbox) != {
+            "existed",
+            "content",
+            "mode",
+        }:
+            raise ValueError
+        if type(raw_openbox["existed"]) is not bool:
+            raise ValueError
+        mode = raw_openbox["mode"]
+        if type(mode) is not int or mode < 0 or mode > 0o777:
+            raise ValueError
+        openbox = FileSnapshot(
+            raw_openbox["existed"],
+            base64.b64decode(raw_openbox["content"], validate=True),
+            mode,
+        )
+        raw_actions = payload["lxqt_actions"]
+        if not isinstance(raw_actions, list) or len(raw_actions) > 4096:
+            raise ValueError
+        actions: list[tuple[int, bool]] = []
+        seen: set[int] = set()
+        for raw_action in raw_actions:
+            if not isinstance(raw_action, dict) or set(raw_action) != {"id", "enabled"}:
+                raise ValueError
+            action_id = raw_action["id"]
+            enabled = raw_action["enabled"]
+            if (
+                type(action_id) is not int
+                or action_id < 0
+                or action_id > (2**64 - 1)
+                or action_id in seen
+                or type(enabled) is not bool
+            ):
+                raise ValueError
+            seen.add(action_id)
+            actions.append((action_id, enabled))
+        return InputTransaction(openbox, tuple(actions))
     except (KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
         raise InputModeError("game input profile state is malformed") from exc
 
 
-def _restore_snapshots(
-    desktop: DesktopPaths, snapshots: Mapping[str, FileSnapshot]
+def _restore_after_activation_failure(
+    desktop: DesktopPaths,
+    transaction: InputTransaction,
+    environment: Mapping[str, str],
 ) -> None:
-    for target, snapshot in (
-        (desktop.openbox, snapshots["openbox"]),
-        (desktop.lxqt, snapshots["lxqt"]),
-    ):
-        if snapshot.existed:
-            _atomic_write(target, snapshot.content, snapshot.mode)
-        else:
-            target.unlink(missing_ok=True)
+    try:
+        _restore_file(desktop.openbox, transaction.openbox)
+        _reload_openbox(environment, allow_failure=True)
+    except (InputModeError, OSError):
+        pass
+    for action_id, enabled in transaction.lxqt_actions:
+        try:
+            _set_lxqt_action_enabled(action_id, enabled, environment)
+        except InputModeError:
+            pass
+    desktop.transaction.unlink(missing_ok=True)
+
+
+def _restore_file(target: Path, snapshot: FileSnapshot) -> None:
+    if snapshot.existed:
+        _atomic_write(target, snapshot.content, snapshot.mode)
+    else:
+        target.unlink(missing_ok=True)
 
 
 def _atomic_write(path: Path, content: bytes, mode: int) -> None:
@@ -294,18 +477,3 @@ def _transform_openbox(source: bytes) -> bytes:
 
 def _local_name(tag: str) -> str:
     return tag.rsplit("}", maxsplit=1)[-1]
-
-
-def _transform_lxqt(source: bytes) -> bytes:
-    parser = configparser.RawConfigParser(interpolation=None)
-    parser.optionxform = str
-    try:
-        parser.read_string(source.decode("utf-8"))
-    except (UnicodeDecodeError, configparser.Error) as exc:
-        raise InputModeError("LXQt shortcut configuration is malformed") from exc
-    for section in parser.sections():
-        if section != "General" and not section.startswith("XF86"):
-            parser.set(section, "Enabled", "false")
-    stream = io.StringIO()
-    parser.write(stream, space_around_delimiters=False)
-    return stream.getvalue().encode("utf-8")

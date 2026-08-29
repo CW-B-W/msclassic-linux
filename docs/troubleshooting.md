@@ -168,17 +168,20 @@ the default HTTP/HTTPS browser.
 
 ## 12. Chinese chat works, but action keys or desktop shortcuts interrupt play
 
-The official launch starts in English/direct-input mode. The current Fcitx
-profile uses Left Shift to switch Chinese/English. Use Left Shift intentionally
-to enter Chinese chat, then use it again to return to English before
-alphabetic action keys such as `C`. The input method cannot determine whether
-the Unity game is currently displaying a chat field, so automatic per-field
-switching is not possible.
+The launcher does not change the selected Fcitx mode. Left Shift remains the
+desktop Chinese/English selector, but requiring the player to switch back to
+English before alphabetic action keys such as `C` is explicitly not the target
+experience. Contextual Wine/X11 routing is under diagnostic development; until
+that diagnostic proves a game-owned chat signal, the project does not claim
+that Chinese can remain selected during gameplay.
 
 Game input mode leaves `Alt+Tab` and `Alt+Shift+Tab` available. It temporarily
 disables other Openbox/LXQt desktop bindings, including the observed
 `Alt+Space` client-menu binding, only while the official Wine launch is
 running. It restores the exact prior per-user shortcut files on game exit.
+Openbox restoration is byte-for-byte. LXQt is not rewritten or restarted: the
+launcher snapshots action states from the running D-Bus daemon, disables only
+non-hardware actions, and restores every saved enabled/disabled state.
 
 Check its state without exposing a website launch URL:
 

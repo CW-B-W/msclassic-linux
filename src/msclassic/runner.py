@@ -12,7 +12,6 @@ from .doctor import collect_graphics_report
 from .input_mode import (
     InputModeError,
     activate_game_input,
-    deactivate_fcitx,
     restore_game_input,
 )
 from .lockfile import load_versions
@@ -111,7 +110,6 @@ def run_authenticated(
             )
         environment, argv = build_wine_command(request, paths)
         try:
-            deactivate_fcitx(environment)
             profile = activate_game_input(paths, environment)
         except InputModeError:
             profile = None

@@ -22,10 +22,11 @@ This repository does not contain the game client, Wine archives, credentials, br
 - Chinese input is validated in-game. The launcher preserves the active Fcitx
   5 environment so Wine's X11 input context can use the desktop IME.
 - Game input mode is implemented for the supported Lubuntu X11/Openbox/LXQt
-  session: launch begins in English/direct input, retains Left Shift for
-  deliberate Chinese chat switching, preserves Alt+Tab, and transactionally
-  restores desktop shortcut settings after the game exits. Live remote-session
-  acceptance remains required before treating it as a scale-out baseline.
+  session: it leaves the selected Fcitx mode unchanged, preserves Alt+Tab,
+  suppresses other configurable desktop shortcuts, and transactionally
+  restores their exact state after the game exits. Automatic raw gameplay keys
+  while Chinese remains selected is still in diagnostic development and is not
+  yet a scale-out claim.
 - Authorized debugger compatibility is validated for Windows Cheat Engine 7.5
   in the same Wine prefix: ordinary Windows debugger attachment, a
   content-neutral read-only scan, clean detach, and continued gameplay passed.

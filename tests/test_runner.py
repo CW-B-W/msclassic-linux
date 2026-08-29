@@ -83,10 +83,6 @@ class RunnerTests(unittest.TestCase):
         self.runtime_validation.start()
         self.input_patches = [
             mock.patch(
-                "msclassic.runner.deactivate_fcitx",
-                return_value=InputModeStatus("unavailable", "Fcitx is unavailable"),
-            ),
-            mock.patch(
                 "msclassic.runner.activate_game_input",
                 return_value=InputModeStatus(
                     "unavailable", "Lubuntu X11 input profile is unavailable"
@@ -234,10 +230,6 @@ class RunnerTests(unittest.TestCase):
     def test_authenticated_launch_prepares_input_and_restores_after_wine(self):
         events = []
 
-        def deactivate(_environment):
-            events.append("fcitx")
-            return InputModeStatus("prepared", "Fcitx was deactivated")
-
         def activate(_paths, _environment):
             events.append("activate")
             return InputModeStatus("active", "Temporary game input profile is active")
@@ -251,7 +243,6 @@ class RunnerTests(unittest.TestCase):
             return InputModeStatus("inactive", "Game input profile was restored")
 
         with (
-            mock.patch("msclassic.runner.deactivate_fcitx", side_effect=deactivate),
             mock.patch("msclassic.runner.activate_game_input", side_effect=activate),
             mock.patch("msclassic.runner.subprocess.run", side_effect=wine),
             mock.patch("msclassic.runner.restore_game_input", side_effect=restore),
@@ -262,13 +253,12 @@ class RunnerTests(unittest.TestCase):
             )
 
         self.assertEqual(result, 0)
-        self.assertEqual(events, ["fcitx", "activate", "wine", "restore"])
+        self.assertEqual(events, ["activate", "wine", "restore"])
 
     def test_authenticated_launch_restores_input_when_wine_spawn_fails(self):
         active = InputModeStatus("active", "Temporary game input profile is active")
 
         with (
-            mock.patch("msclassic.runner.deactivate_fcitx"),
             mock.patch("msclassic.runner.activate_game_input", return_value=active),
             mock.patch("msclassic.runner.subprocess.run", side_effect=OSError("spawn failed")),
             mock.patch("msclassic.runner.restore_game_input") as restored,

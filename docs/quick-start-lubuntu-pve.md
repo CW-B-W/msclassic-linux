@@ -228,17 +228,20 @@ composition in MapleStory was confirmed on 2026-08-28.
 ### Game input mode
 
 The normal website launch prepares **Game input mode** immediately before Wine
-starts. It asks Fcitx to use English/direct input, then temporarily removes
-desktop shortcuts that can steal a game key. It restores the prior Openbox and
-LXQt shortcut configuration after the game process exits. It never edits
-`/etc`, Proxmox, or the host.
+starts. It leaves the current Fcitx Chinese/English selection unchanged, then
+temporarily removes desktop shortcuts that can steal a game key. Openbox is
+changed through a private user profile; LXQt actions are changed through the
+already-running D-Bus daemon rather than by editing its file or restarting it.
+The exact prior states are restored after the game process exits. It never
+edits `/etc`, Proxmox, or the host.
 
 `Alt+Tab` and `Alt+Shift+Tab` remain available so the player can leave the
 game. Current Fcitx configuration uses Left Shift to switch Chinese/English;
-that trigger remains available for intentional chat entry. Toggle it to
-Chinese to type a chat message, then toggle it back to English before using
-letter action keys. Fcitx cannot tell a Unity chat field from gameplay, so
-this explicit switch is required.
+that trigger remains available. The required final behavior is for Chinese to
+remain selected across chat and gameplay while gameplay letters remain raw
+outside chat. That contextual Wine/X11 routing is not yet released: the
+current checkpoint fixes desktop shortcuts but does not claim the contextual
+IME behavior.
 
 Inspect or recover the profile without a launch URL:
 
