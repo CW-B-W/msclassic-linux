@@ -11,6 +11,7 @@ from unittest import mock
 
 from msclassic.doctor import GraphicsReport
 from msclassic.input_mode import InputModeStatus
+from msclassic.input_diagnostic import arm_input_diagnostic, start_armed_input_diagnostic
 from msclassic.lockfile import load_versions
 from msclassic.paths import AppPaths
 from msclassic.protocol import LaunchRequest
@@ -324,6 +325,36 @@ class RunnerTests(unittest.TestCase):
             fcntl.flock(owner, fcntl.LOCK_EX | fcntl.LOCK_NB)
             with self.assertRaises(ActiveSessionError):
                 run_authenticated(LaunchRequest("2982", None, ("safe",)), self.paths)
+
+    def test_persistent_candidate_reaches_real_child_on_successive_authenticated_launches(self):
+        artifact = load_versions(REPO / "versions.lock")["wine"]
+        runtime = self.paths.tools / f"{artifact.version}-msclassic-inputcandidate2"
+        wine = runtime / "bin/wine"
+        wine.parent.mkdir(parents=True)
+        wine.write_text(
+            "#!/usr/bin/python3\n"
+            "import os\n"
+            "from pathlib import Path\n"
+            "assert os.environ['MSCLASSIC_INPUT_DIAGNOSTIC'] == '1'\n"
+            "os.fstat(int(os.environ['MSCLASSIC_INPUT_DIAGNOSTIC_FD']))\n"
+            "with Path(__file__).with_name('launches.txt').open('a') as stream:\n"
+            "    stream.write('candidate with open diagnostic FD\\n')\n"
+        )
+        wine.chmod(0o700)
+        with (
+            mock.patch("msclassic.input_diagnostic.diagnostic_runtime_valid", return_value=True),
+            mock.patch("msclassic.runner.start_armed_input_diagnostic", start_armed_input_diagnostic),
+        ):
+            arm_input_diagnostic(self.paths, artifact, persistent=True)
+            for _ in range(2):
+                self.assertEqual(
+                    run_authenticated(LaunchRequest("2982", None, ("safe",)), self.paths), 0
+                )
+        self.assertEqual(
+            wine.with_name("launches.txt").read_text(),
+            "candidate with open diagnostic FD\ncandidate with open diagnostic FD\n",
+        )
+        self.assertFalse(self.wine.with_name("receipt.txt").exists())
 
     def test_rejects_runtime_without_matching_stamp_or_writable_client(self):
         with mock.patch("msclassic.runner.patched_runtime_valid", return_value=False):

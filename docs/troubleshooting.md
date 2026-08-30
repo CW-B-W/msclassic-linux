@@ -175,8 +175,13 @@ experience. Contextual Wine/X11 routing is under diagnostic development; until
 that diagnostic proves a game-owned chat signal, the project does not claim
 that Chinese can remain selected during gameplay.
 
-On the development branch, `msclassic input diagnose` arms a single
-side-by-side Wine run that records only category/timestamp events. Exercise
+On the development branch, `msclassic input diagnose --persistent` keeps the
+experimental candidate selected across website relaunches until
+`msclassic input diagnostic-stop`. Without `--persistent`, selection lasts
+only one launch: a replacement game may use the original runtime. Status
+`enabled` means selected for future launches, not patched into an existing
+game. Restart the game to switch builds. These runs record only
+category/timestamp events. Exercise
 Chinese-selected gameplay, open chat, harmless dummy composition, and closed
 chat in that order. The result is accepted only if IME-open state or
 composition-rectangle lifetime matches the user-confirmed chat boundaries

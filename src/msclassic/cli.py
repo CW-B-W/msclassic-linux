@@ -176,7 +176,7 @@ def _dispatch(args: argparse.Namespace, paths: AppPaths) -> int:
             payload = restore_game_input(paths, os.environ).to_json()
         elif args.input_command == "diagnose":
             artifact = load_versions(REPO / "versions.lock")["wine"]
-            payload = arm_input_diagnostic(paths, artifact).to_json()
+            payload = arm_input_diagnostic(paths, artifact, persistent=args.persistent).to_json()
         elif args.input_command == "diagnostic-status":
             payload = input_diagnostic_status(paths).to_json()
         elif args.input_command == "diagnostic-stop":
@@ -470,7 +470,11 @@ def _parser() -> argparse.ArgumentParser:
     input_subcommands = input_command.add_subparsers(dest="input_command", required=True)
     input_subcommands.add_parser("status")
     input_subcommands.add_parser("restore")
-    input_subcommands.add_parser("diagnose")
+    input_diagnose = input_subcommands.add_parser("diagnose")
+    input_diagnose.add_argument(
+        "--persistent", action="store_true",
+        help="select the experimental runtime for every launch until diagnostic-stop",
+    )
     input_subcommands.add_parser("diagnostic-status")
     input_subcommands.add_parser("diagnostic-stop")
     input_summary = input_subcommands.add_parser("summarize")

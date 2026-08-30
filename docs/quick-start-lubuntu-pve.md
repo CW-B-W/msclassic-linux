@@ -282,27 +282,43 @@ that experiment.
 
 ### Contextual IME diagnostic (development only)
 
-The current development branch includes an isolated diagnostic Wine runtime;
-normal website launches continue to use the known-good runtime. Build it from
-the installed project assets only when investigating the Chinese gameplay/chat
-boundary:
+The current development branch includes an isolated **experimental input
+candidate**, not a verified gameplay fix. Normal website launches use the
+known-good runtime unless a diagnostic run or persistent candidate selection
+is enabled. Build the candidate from the installed project assets only when
+investigating the Chinese gameplay/chat boundary:
 
 ```bash
 ~/.local/share/maplestory-classic/app/scripts/build-input-diagnostic-wine.sh \
   --base-runtime ~/.local/share/maplestory-classic/tools/wine-11.10-staging-tkg-amd64-wow64-msclassic1 \
-  --output ~/.local/share/maplestory-classic/tools/wine-11.10-staging-tkg-amd64-wow64-msclassic-inputdiag1 \
+  --output ~/.local/share/maplestory-classic/tools/wine-11.10-staging-tkg-amd64-wow64-msclassic-inputcandidate2 \
   --cache ~/.cache/msclassic-build
-msclassic input diagnose
+msclassic input diagnose --persistent
 ```
 
-`diagnose` arms exactly one subsequent official website launch. The binary log
+`diagnose --persistent` selects this exact candidate build for **every subsequent
+official website launch**, including after game crashes, normal exits, and VM
+reboots. No rearming is needed. Runtime hashes are checked at every launch;
+missing or changed candidate files cause a refusal, not silent fallback. A
+changed build pin requires explicit reselection. This does not alter a game
+already running: close it and launch again from the website.
+
+`msclassic input diagnostic-status` reports `enabled` between runs and
+`capturing` during a diagnostic launch. `msclassic input diagnostic-stop`
+disables the selection for future launches without killing the current game;
+close the game and relaunch to return to the known-good runtime. Without
+`--persistent`, `diagnose` retains its original one-launch behavior.
+
+Each diagnostic launch creates a separate private log. The binary log
 contains only fixed event categories and monotonic timestamps; it cannot
 contain key identities, typed or composed text, coordinates, window titles,
 launch arguments, URIs, or account data. Check state with
 `msclassic input diagnostic-status`. After the game exits, summarize the
 private `0600` log with `msclassic input summarize PATH`. Do not commit or
-share the raw log. This diagnostic observes behavior only and does not yet fix
-contextual IME routing.
+share the raw log. Candidate 2 changes Wine's IMM32/X11 routing based on input
+context attachment, but whether that signal tracks this game's chat state
+remains unverified. Passing launcher tests is not proof of working gameplay.
+See [the deployment audit](trials/2026-08-31-persistent-input-candidate.md).
 
 ## 7. Launch through the official website
 

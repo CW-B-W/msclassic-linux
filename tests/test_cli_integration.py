@@ -12,7 +12,12 @@ from msclassic.approval import GraphicsApprovalError
 from msclassic.cli import _install_application, main
 from msclassic.doctor import GraphicsReport
 from msclassic.input_mode import InputModeStatus
-from msclassic.input_diagnostic import InputDiagnosticStatus
+from msclassic.input_diagnostic import (
+    InputDiagnosticError,
+    InputDiagnosticStatus,
+    start_armed_input_diagnostic,
+)
+from msclassic.lockfile import load_versions
 from msclassic.paths import AppPaths
 from msclassic.profiler import ProfilerStatus
 from msclassic.updater import UpdateCheck
@@ -196,6 +201,81 @@ class CliIntegrationTests(unittest.TestCase):
         self.assertEqual(json.loads(output), summary)
         self.assertNotIn(str(log), output)
         invoked.assert_called_once()
+
+    def test_persistent_candidate_survives_two_launches_without_rearming(self):
+        paths = AppPaths.from_environment(self.env)
+        artifact = load_versions(REPO / "versions.lock")["wine"]
+        with mock.patch("msclassic.input_diagnostic.diagnostic_runtime_valid", return_value=True):
+            code, output, error = self.invoke(["input", "diagnose", "--persistent"])
+            self.assertEqual(code, 0, error)
+            self.assertEqual(json.loads(output)["state"], "enabled")
+            logs = []
+            for _ in range(2):
+                session = start_armed_input_diagnostic(paths, artifact)
+                self.assertIsNotNone(session)
+                try:
+                    self.assertTrue(session.wine_root.name.endswith("-msclassic-inputcandidate2"))
+                    self.assertEqual(session.log_path.stat().st_mode & 0o777, 0o600)
+                    logs.append(session.log_path)
+                finally:
+                    session.close()
+                code, output, error = self.invoke(["input", "diagnostic-status"])
+                self.assertEqual(code, 0, error)
+                self.assertEqual(json.loads(output)["state"], "enabled")
+            self.assertNotEqual(logs[0], logs[1])
+
+    def test_stopping_persistent_selection_during_capture_prevents_next_capture(self):
+        paths = AppPaths.from_environment(self.env)
+        artifact = load_versions(REPO / "versions.lock")["wine"]
+        with mock.patch("msclassic.input_diagnostic.diagnostic_runtime_valid", return_value=True):
+            code, _, error = self.invoke(["input", "diagnose", "--persistent"])
+            self.assertEqual(code, 0, error)
+            session = start_armed_input_diagnostic(paths, artifact)
+            self.assertIsNotNone(session)
+            try:
+                code, output, error = self.invoke(["input", "diagnostic-stop"])
+                self.assertEqual(code, 0, error)
+                self.assertEqual(json.loads(output)["state"], "capturing")
+                # Disabling future launches must not close this game's log FD.
+                os.fstat(session.descriptor)
+            finally:
+                session.close()
+            self.assertIsNone(start_armed_input_diagnostic(paths, artifact))
+
+    def test_persistent_candidate_failure_does_not_fall_back_to_original_runtime(self):
+        paths = AppPaths.from_environment(self.env)
+        artifact = load_versions(REPO / "versions.lock")["wine"]
+        with mock.patch("msclassic.input_diagnostic.diagnostic_runtime_valid", return_value=True):
+            code, _, error = self.invoke(["input", "diagnose", "--persistent"])
+            self.assertEqual(code, 0, error)
+        with mock.patch("msclassic.input_diagnostic.diagnostic_runtime_valid", return_value=False):
+            with self.assertRaisesRegex(InputDiagnosticError, "unavailable"):
+                start_armed_input_diagnostic(paths, artifact)
+
+    def test_persistent_selection_rejects_a_different_or_malformed_build_pin(self):
+        paths = AppPaths.from_environment(self.env)
+        artifact = load_versions(REPO / "versions.lock")["wine"]
+        with mock.patch("msclassic.input_diagnostic.diagnostic_runtime_valid", return_value=True):
+            code, _, error = self.invoke(["input", "diagnose", "--persistent"])
+            self.assertEqual(code, 0, error)
+            marker = paths.state / "input-diagnostic/persistent.json"
+            pinned = json.loads(marker.read_text())
+            pinned["manifest"]["winex11_sha256"] = "0" * 64
+            for content in (json.dumps(pinned), "not json"):
+                marker.write_text(content)
+                with self.assertRaises(InputDiagnosticError):
+                    start_armed_input_diagnostic(paths, artifact)
+
+    def test_persistent_selection_rejects_a_changed_inherited_ntdll_build(self):
+        paths = AppPaths.from_environment(self.env)
+        artifact = load_versions(REPO / "versions.lock")["wine"]
+        with mock.patch("msclassic.input_diagnostic.diagnostic_runtime_valid", return_value=True):
+            code, _, error = self.invoke(["input", "diagnose", "--persistent"])
+            self.assertEqual(code, 0, error)
+            # Model an app update accepting a new NTDLL while input DLLs stay unchanged.
+            with mock.patch("msclassic.runtime.PATCHED_NTDLL_SHA256", "0" * 64):
+                with self.assertRaisesRegex(InputDiagnosticError, "build changed"):
+                    start_armed_input_diagnostic(paths, artifact)
 
     def test_handler_failure_uses_fixed_notification_and_redacted_error(self):
         private_uri = "nexonplug://?game=2982&passarg=private-browser-value"
