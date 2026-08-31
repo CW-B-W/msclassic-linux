@@ -202,7 +202,7 @@ class CliIntegrationTests(unittest.TestCase):
         self.assertNotIn(str(log), output)
         invoked.assert_called_once()
 
-    def test_persistent_candidate_survives_two_launches_without_rearming(self):
+    def test_persistent_logging_survives_two_launches_without_rearming(self):
         paths = AppPaths.from_environment(self.env)
         artifact = load_versions(REPO / "versions.lock")["wine"]
         with mock.patch("msclassic.input_diagnostic.diagnostic_runtime_valid", return_value=True):
@@ -214,7 +214,7 @@ class CliIntegrationTests(unittest.TestCase):
                 session = start_armed_input_diagnostic(paths, artifact)
                 self.assertIsNotNone(session)
                 try:
-                    self.assertTrue(session.wine_root.name.endswith("-msclassic-inputcandidate2"))
+                    self.assertTrue(session.wine_root.name.endswith("-msclassic2"))
                     self.assertEqual(session.log_path.stat().st_mode & 0o777, 0o600)
                     logs.append(session.log_path)
                 finally:
@@ -223,6 +223,18 @@ class CliIntegrationTests(unittest.TestCase):
                 self.assertEqual(code, 0, error)
                 self.assertEqual(json.loads(output)["state"], "enabled")
             self.assertNotEqual(logs[0], logs[1])
+
+    def test_legacy_candidate_selection_does_not_enable_logging_in_release(self):
+        paths = AppPaths.from_environment(self.env)
+        artifact = load_versions(REPO / "versions.lock")["wine"]
+        directory = paths.state / "input-diagnostic"
+        directory.mkdir(parents=True)
+        for name in ("persistent.json", "armed.json", "active.json"):
+            (directory / name).write_text('{"schema": 1}')
+        self.assertIsNone(start_armed_input_diagnostic(paths, artifact))
+        code, output, error = self.invoke(["input", "diagnostic-status"])
+        self.assertEqual(code, 0, error)
+        self.assertEqual(json.loads(output)["state"], "inactive")
 
     def test_stopping_persistent_selection_during_capture_prevents_next_capture(self):
         paths = AppPaths.from_environment(self.env)
@@ -258,7 +270,7 @@ class CliIntegrationTests(unittest.TestCase):
         with mock.patch("msclassic.input_diagnostic.diagnostic_runtime_valid", return_value=True):
             code, _, error = self.invoke(["input", "diagnose", "--persistent"])
             self.assertEqual(code, 0, error)
-            marker = paths.state / "input-diagnostic/persistent.json"
+            marker = paths.state / "input-diagnostic/capture-persistent.json"
             pinned = json.loads(marker.read_text())
             pinned["manifest"]["winex11_sha256"] = "0" * 64
             for content in (json.dumps(pinned), "not json"):
@@ -348,7 +360,7 @@ class CliIntegrationTests(unittest.TestCase):
 
         installed = paths.data / "app"
         builder = installed / "scripts/build-patched-wine.sh"
-        diagnostic_builder = installed / "scripts/build-input-diagnostic-wine.sh"
+        diagnostic_builder = installed / "scripts/build-input-wine.sh"
         patch = installed / "patches/wine-11.10-ntdll-frame-walk-page-fault-guard.patch"
         diagnostic_patch = installed / "patches/wine-11.10-msclassic-input-diagnostic.patch"
         self.assertTrue(builder.is_file())

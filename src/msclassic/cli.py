@@ -419,8 +419,8 @@ def _install_application(paths: AppPaths) -> None:
         temporary_root / "scripts/build-patched-wine.sh",
     )
     shutil.copy2(
-        REPO / "scripts/build-input-diagnostic-wine.sh",
-        temporary_root / "scripts/build-input-diagnostic-wine.sh",
+        REPO / "scripts/build-input-wine.sh",
+        temporary_root / "scripts/build-input-wine.sh",
     )
     shutil.copytree(REPO / "patches", temporary_root / "patches")
     shutil.copytree(REPO / "platforms", temporary_root / "platforms", ignore=ignore)
@@ -473,7 +473,7 @@ def _parser() -> argparse.ArgumentParser:
     input_diagnose = input_subcommands.add_parser("diagnose")
     input_diagnose.add_argument(
         "--persistent", action="store_true",
-        help="select the experimental runtime for every launch until diagnostic-stop",
+        help="capture private input diagnostics on each launch until diagnostic-stop",
     )
     input_subcommands.add_parser("diagnostic-status")
     input_subcommands.add_parser("diagnostic-stop")

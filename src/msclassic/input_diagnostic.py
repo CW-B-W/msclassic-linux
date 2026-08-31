@@ -99,11 +99,11 @@ def input_diagnostic_status(paths: AppPaths) -> InputDiagnosticStatus:
     if _active_marker(paths).is_file():
         detail = "Input diagnostics are being captured"
         if persistent:
-            detail += "; experimental runtime remains selected for future launches"
+            detail += "; logging remains enabled for future launches"
         return InputDiagnosticStatus("capturing", detail)
     if persistent:
         return InputDiagnosticStatus(
-            "enabled", "Experimental input runtime selected for every launch until diagnostic-stop"
+            "enabled", "Input diagnostic logging enabled for every launch until diagnostic-stop"
         )
     if _armed_marker(paths).is_file():
         return InputDiagnosticStatus(
@@ -117,7 +117,7 @@ def stop_input_diagnostic(paths: AppPaths) -> InputDiagnosticStatus:
     _armed_marker(paths).unlink(missing_ok=True)
     if _active_marker(paths).is_file():
         return InputDiagnosticStatus(
-            "capturing", "Future diagnostics disabled; the current runtime remains until the game exits"
+            "capturing", "Future logging disabled; the current capture ends when the game exits"
         )
     return InputDiagnosticStatus("inactive", "No input diagnostic is armed")
 
@@ -178,15 +178,15 @@ def input_diagnostic_directory(paths: AppPaths) -> Path:
 
 
 def _armed_marker(paths: AppPaths) -> Path:
-    return input_diagnostic_directory(paths) / "armed.json"
+    return input_diagnostic_directory(paths) / "capture-armed.json"
 
 
 def _active_marker(paths: AppPaths) -> Path:
-    return input_diagnostic_directory(paths) / "active.json"
+    return input_diagnostic_directory(paths) / "capture-active.json"
 
 
 def _persistent_marker(paths: AppPaths) -> Path:
-    return input_diagnostic_directory(paths) / "persistent.json"
+    return input_diagnostic_directory(paths) / "capture-persistent.json"
 
 
 def _persistent_selection(paths: AppPaths, artifact: Artifact) -> dict[str, object]:

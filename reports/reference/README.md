@@ -1,6 +1,8 @@
 # Reference evidence
 
-This directory is reserved for reviewed, non-sensitive reference fingerprints and reports. The first VM has passed live gameplay, Chinese input, and the scoped Windows-debugger compatibility trial. It has not yet passed clean-boot/relaunch and multi-VM acceptance, so no platform fingerprint is promoted here yet.
+This directory is reserved for reviewed, non-sensitive platform fingerprints
+and acceptance reports. See [validation status](../../docs/validation.md) for
+current coverage. Raw trial output belongs outside the repository.
 
 A candidate can be promoted only after:
 

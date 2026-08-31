@@ -193,4 +193,4 @@ printf '%s\n' \
 chmod 0600 "$staged_runtime/.msclassic-input-diagnostic.json"
 mv "$staged_runtime" "$output_runtime"
 staged_runtime=""
-printf 'Input diagnostic Wine runtime created: %s\n' "$output_runtime"
+printf 'Contextual-input Wine runtime created: %s\n' "$output_runtime"

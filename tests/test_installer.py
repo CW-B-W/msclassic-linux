@@ -13,6 +13,7 @@ from unittest import mock
 from msclassic.doctor import GraphicsReport
 from msclassic.installer import (
     MINIMUM_FREE_BYTES,
+    INPUT_RUNTIME_HEADROOM_BYTES,
     InstallerError,
     UnsafeArchiveError,
     build_install_plan,
@@ -20,6 +21,8 @@ from msclassic.installer import (
     InstallAction,
     InstallPlan,
     _install_ngs_service,
+    _execute_action,
+    _prepare_patched_runtime,
     _prefix_initialized,
     _run_runtime,
     perform_install,
@@ -107,7 +110,7 @@ class InstallerTests(unittest.TestCase):
         source_bytes = sum((self.source / item).stat().st_size for item in REQUIRED_CLIENT_FILES)
         self.assertEqual(
             plan.required_bytes,
-            source_bytes + self.artifact.size * 3 + MINIMUM_FREE_BYTES,
+            source_bytes + self.artifact.size * 3 + MINIMUM_FREE_BYTES + INPUT_RUNTIME_HEADROOM_BYTES,
         )
         self.assertIn("import_client", [action.kind for action in plan.actions])
         kinds = [action.kind for action in plan.actions]
@@ -117,6 +120,41 @@ class InstallerTests(unittest.TestCase):
         (self.source / "UnityPlayer.dll").unlink()
         with self.assertRaises(InstallerError):
             build_install_plan(self.paths, {"wine": self.artifact}, self.source, LUBUNTU_2404)
+
+    def test_install_prepares_input_runtime_before_any_prefix_execution(self):
+        plan = build_install_plan(self.paths, {"wine": self.artifact}, self.source, LUBUNTU_2404)
+        builds = [action for action in plan.actions if action.kind.startswith("prepare_")]
+        self.assertEqual([action.destination.name for action in builds],
+                         ["wine-test-msclassic1", "wine-test-msclassic2"])
+        self.assertEqual(builds[1].source, builds[0].destination)
+        self.assertLess(plan.actions.index(builds[1]),
+                        next(i for i, action in enumerate(plan.actions) if action.kind == "initialize_prefix"))
+
+    def test_input_runtime_build_uses_verified_base_and_validates_result(self):
+        plan = build_install_plan(self.paths, {"wine": self.artifact}, self.source, LUBUNTU_2404)
+        action = next(a for a in plan.actions if a.kind == "prepare_patched_runtime")
+        with (
+            mock.patch("msclassic.installer.patched_runtime_valid", side_effect=[False, True]),
+            mock.patch("msclassic.installer.base_runtime_valid", return_value=True),
+            mock.patch("msclassic.installer.patched_runtime_build_supported", return_value=True),
+            mock.patch("msclassic.installer.subprocess.run", return_value=subprocess.CompletedProcess([], 0)) as build,
+        ):
+            _prepare_patched_runtime(action, self.paths)
+        self.assertEqual(build.call_args.args[0], [
+            str(REPO / "scripts/build-input-wine.sh"),
+            "--base-runtime", str(self.paths.tools / "wine-test-msclassic1"),
+            "--output", str(self.paths.tools / "wine-test-msclassic2"),
+            "--cache", "/home/ubuntu/.cache/msclassic-build",
+        ])
+        self.assertFalse(build.call_args.kwargs["shell"])
+        with (
+            mock.patch("msclassic.installer.patched_runtime_valid", return_value=False),
+            mock.patch("msclassic.installer.base_runtime_valid", return_value=False),
+            mock.patch("msclassic.installer.subprocess.run") as build,
+        ):
+            with self.assertRaisesRegex(InstallerError, "verified base"):
+                _prepare_patched_runtime(action, self.paths)
+            build.assert_not_called()
 
     def test_rejects_source_without_vendor_ngs_installer(self):
         (
@@ -130,6 +168,26 @@ class InstallerTests(unittest.TestCase):
                 self.source,
                 LUBUNTU_2404,
             )
+
+    def test_failed_or_unverified_input_build_stops_before_prefix_execution(self):
+        plan = build_install_plan(self.paths, {"wine": self.artifact}, self.source, LUBUNTU_2404)
+        build = next(a for a in plan.actions if a.kind == "prepare_patched_runtime")
+        remaining = InstallPlan((build, InstallAction("initialize_prefix")), 0)
+        for returncode in (1, 0):
+            with (
+                self.subTest(returncode=returncode),
+                mock.patch("msclassic.installer.patched_runtime_valid", return_value=False),
+                mock.patch("msclassic.installer.base_runtime_valid", return_value=True),
+                mock.patch("msclassic.installer.patched_runtime_build_supported", return_value=True),
+                mock.patch("msclassic.installer.subprocess.run",
+                           return_value=subprocess.CompletedProcess([], returncode)) as invoked,
+                mock.patch("msclassic.installer._run_runtime") as prefix,
+            ):
+                with self.assertRaisesRegex(InstallerError, "failed verification"):
+                    execute_install(remaining, self._report(passes=True), False,
+                                    operation=lambda action: _execute_action(action, self.paths, REPO / "prefix.reg"))
+                invoked.assert_called_once()
+                prefix.assert_not_called()
 
     def test_download_mode_acquires_only_after_locked_nxdl_is_installed(self):
         nxdl = Artifact(

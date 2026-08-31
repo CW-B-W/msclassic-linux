@@ -1,27 +1,34 @@
-# Roadmap and expected porting effort
+# Roadmap
 
-The hard compatibility questions are already answered for the validated VM: official website handoff works, the audited Wine 11.10 profile supplies the required Windows behavior, the vendor GRAP/NGS-X chain reaches a live map, and WineD3D/OpenGL works over VirGL. Future effort is primarily acceptance testing, a path-independent Wine build, packaging, and graphics-profile validation.
+## Current target
 
-| Target | Expected effort | Main work |
-| --- | --- | --- |
-| Lubuntu 24.04 on Intel/AMD physical hardware, X11 | Low to medium | Add a native-Mesa graphics profile, retain the validated `/home/ubuntu` runtime layout initially, remove only the VirGL identity requirement for that profile, and complete a live acceptance run. No Proxmox layer is needed. |
-| Ubuntu with LXQt on PVE VirGL | Low | Confirm package/session parity with the Lubuntu adapter and run the full acceptance checklist. It may be declared compatible if evidence is identical. |
-| Fedora on PVE VirGL | Medium | Make the Wine build path-independent, add a DNF/multilib package adapter, handle locale/Chromium policy paths and SELinux, then run the same VirGL/live tests. |
-| Arch Linux on PVE VirGL | Medium | Make the Wine build path-independent, add a pacman/multilib adapter and rolling-version drift policy, integrate Chromium, and run acceptance tests. |
-| Fedora or Arch on physical Intel/AMD hardware | Medium | Combine the distribution adapter with the native-Mesa profile and perform the full login/gameplay/reboot validation. |
-| Wayland-only desktop | Medium to high | Validate Wine/input/focus and remote desktop under Wayland or provide a supported X11 session. The initial gate intentionally refuses Wayland. |
-| 2–4 concurrent PVE VMs | Measurement rather than new compatibility code | Add one VM at a time; measure CPU, RAM, iGPU load, frame pacing, and remote responsiveness. Shared VirGL removes passthrough scarcity but not capacity limits. |
+Lubuntu 24.04, user `ubuntu`, X11/Openbox/LXQt, on a Proxmox VirGL VM.
+The graphics path remains WineD3D/OpenGL with no GPU passthrough.
 
-Near-term milestones:
+## Next acceptance work
 
-1. Confirm a website relaunch after closing the same-prefix Windows debugger,
-   and a website launch after guest reboot without manually invoking doctor.
-2. Reproduce on VM 2 and run two VMs concurrently.
-3. Test VM 3 and VM 4 sequentially if host capacity remains acceptable.
-4. Validate Sunshine/Moonlight; keep RustDesk excluded from gameplay unless its
-   Linux held-key delivery is fixed upstream.
-5. Add a native-Lubuntu graphics profile.
-6. Make the patched Wine build path-independent.
-7. Add Fedora, then Arch adapters based on real machines—not speculative package lists.
+1. Confirm normal website launch, input behavior and shortcut restoration with
+   the release runtime and diagnostic logging off.
+2. Confirm a launch after guest reboot without manually running doctor.
+3. Reproduce from a fresh second VM using public client download.
+4. Run two VMs concurrently, then consider three/four based on measured load.
+5. Compare controlled performance captures for fast movement/crowded maps.
+6. Validate Sunshine/Moonlight. Use noVNC or AnyDesk in the meantime.
 
-This project will not add GPU passthrough as the default scaling strategy, automate Beanfun credentials, clone browser sessions, or weaken the protocol/privacy boundary.
+The profiler is available, but no measured crowded-map performance fix is
+claimed. VM creation, power operations and host changes stay with the operator
+in Proxmox WebUI.
+
+## Future portability
+
+| Environment | Main work |
+| --- | --- |
+| Lubuntu on Intel/AMD physical hardware | Add native-Mesa graphics validation; test login, input and remote access |
+| Ubuntu + LXQt on a Proxmox VM | Validate package/session parity and complete acceptance |
+| Fedora or Arch on a VM | Path-independent Wine build, distribution adapter, policy/locale/security integration |
+| Fedora or Arch on physical hardware | Distribution work plus native graphics validation |
+| Wayland or NVIDIA | Separate input, graphics and remote-desktop validation |
+
+These are plans, not supported-platform claims. The current hard-coded Wine
+build path must be removed through a separately validated build before other
+home paths/distributions can be advertised as supported.

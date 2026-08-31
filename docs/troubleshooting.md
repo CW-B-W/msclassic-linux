@@ -47,14 +47,16 @@ Confirm the locked base, audited patched runtime, and client exist:
 
 ```bash
 cat ~/.local/share/maplestory-classic/tools/wine-11.10-staging-tkg-amd64-wow64/.msclassic-artifact.json
-cat ~/.local/share/maplestory-classic/tools/wine-11.10-staging-tkg-amd64-wow64-msclassic1/.msclassic-runtime.json
-test -x ~/.local/share/maplestory-classic/tools/wine-11.10-staging-tkg-amd64-wow64-msclassic1/bin/wine
+cat ~/.local/share/maplestory-classic/tools/wine-11.10-staging-tkg-amd64-wow64-msclassic2/.msclassic-runtime.json
+test -x ~/.local/share/maplestory-classic/tools/wine-11.10-staging-tkg-amd64-wow64-msclassic2/bin/wine
 test -r ~/Games/MapleStoryClassic/Maplestory_Classic.exe
 test -w ~/Games/MapleStoryClassic/Maplestory_Classic.exe
 cat ~/.local/state/maplestory-classic/last-launch-status.json
 ```
 
-GE-Proton11-3 and GE-Proton11-5 were rejected during the investigation because their Wine 11.0 base aborted when Unity called `UIAutomationCore.DLL.UiaDisconnectAllProviders`. The locked Wine 11.10 build implements the required API. The launcher additionally requires this repository's hash-verified NTDLL frame-walk guard; do not silently substitute another runtime or copy an unrecorded DLL into it.
+The launcher requires the hash-verified runtime built by this repository,
+including its NTDLL and input patches. Do not substitute an arbitrary Wine
+version or replace individual DLLs without verification.
 
 If a fresh install reports that patched Wine v1 requires `/home/ubuntu`, that is an intentional current-profile boundary. Use the `ubuntu` account in the supported Lubuntu VM template. Other home paths need a future path-independent runtime profile; do not bypass the final hash check.
 
@@ -78,9 +80,9 @@ test -f ~/.local/share/maplestory-classic/prefix-wine1110/drive_c/ProgramData/Ne
 
 `grap-core64.aes` is a normal x86-64 Windows PE executable despite its suffix. Do not `chmod +x` it, launch it with guessed arguments, create a fake service entry, or disable the security module. The game-shipped `grap64.dll` expects the Wine service manager to start `NGService.exe`, which verifies and launches GRAP with per-session arguments.
 
-Rerun the guest installer to complete the Wine service baseline and invoke the vendor's `NGService.exe -install` workflow. The installer suppresses optional Wine Mono/Gecko prompts during prefix setup and refuses a partial prefix instead of accepting registry files alone. The repaired 2026-08-27 profile successfully started `NGService.exe`, kept `grap-core64.aes` alive, and entered a map.
+Rerun the guest installer to complete the Wine service baseline and invoke the vendor's `NGService.exe -install` workflow. The installer suppresses optional Wine Mono/Gecko prompts during prefix setup and refuses a partial prefix instead of accepting registry files alone.
 
-See [the GRAP / NGS-X investigation](2026-08-27-grap-ngs-investigation.md) for the evidence and CyderBits comparison.
+See [architecture](architecture.md) for the vendor service path.
 
 ## 7. Another launch or update is active
 
@@ -168,24 +170,27 @@ the default HTTP/HTTPS browser.
 
 ## 12. Chinese chat works, but action keys or desktop shortcuts interrupt play
 
-The launcher does not change the selected Fcitx mode. Left Shift remains the
-desktop Chinese/English selector, but requiring the player to switch back to
-English before alphabetic action keys such as `C` is explicitly not the target
-experience. Contextual Wine/X11 routing is under diagnostic development; until
-that diagnostic proves a game-owned chat signal, the project does not claim
-that Chinese can remain selected during gameplay.
+The normal msclassic2 runtime includes contextual input. Chinese can remain
+selected while gameplay letters work outside chat. Left Shift remains the
+configured Chinese/English selector in chat.
 
-On the development branch, `msclassic input diagnose --persistent` keeps the
-experimental candidate selected across website relaunches until
-`msclassic input diagnostic-stop`. Without `--persistent`, selection lasts
-only one launch: a replacement game may use the original runtime. Status
-`enabled` means selected for future launches, not patched into an existing
-game. Restart the game to switch builds. These runs record only
-category/timestamp events. Exercise
-Chinese-selected gameplay, open chat, harmless dummy composition, and closed
-chat in that order. The result is accepted only if IME-open state or
-composition-rectangle lifetime matches the user-confirmed chat boundaries
-exactly; Enter/Escape, screen, timing, and game-memory heuristics are rejected.
+If that behavior regresses, verify the **running process**, not just files on
+disk:
+
+```bash
+for game_pid in $(pgrep -x Maplestory_Clas); do
+  readlink -f "/proc/$game_pid/exe"
+  rg -o '/[^ ]+/(winex11\.so|imm32\.dll)$' "/proc/$game_pid/maps" | sort -u
+done
+```
+
+Both modules must come from the msclassic2 runtime. Close a game that was
+already running before installation and launch again. No browser restart or
+diagnostic arming is required just to enable the fix.
+
+For an explicit diagnostic capture, run `msclassic input diagnose` before
+a website launch. `msclassic input diagnostic-stop` stops future logging,
+not the input fix. The release ignores legacy development-selection markers.
 
 Game input mode leaves `Alt+Tab` and `Alt+Shift+Tab` available. It temporarily
 disables other Openbox/LXQt desktop bindings, including the observed
@@ -236,12 +241,7 @@ For software you are authorized to inspect, follow
 inside the exact MapleStory Wine prefix. Do not use debugging to disable,
 patch, conceal from, or bypass GRAP/NGS-X.
 
-The 2026-08-28 supervised acceptance used Windows CE debugger interface 1. It
-passed a 10-minute idle attachment, one content-neutral read-only scan, a
-five-minute post-scan observation, clean detach, and continued gameplay. This
-does not validate breakpoints, watchpoints, or memory modification.
-
-## 13. Safe evidence for a report
+## 14. Safe evidence for a report
 
 Acceptable evidence includes PVE/QEMU versions, package versions, `glxinfo -B`, sanitized doctor JSON, display resolution, fixed launch status, and observations such as “window appeared” or “audio stuttered.”
 

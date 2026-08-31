@@ -23,6 +23,8 @@ from msclassic.runtime import (
     patched_runtime_build_supported,
     patched_runtime_root,
     patched_runtime_valid,
+    base_runtime_root,
+    base_runtime_valid,
 )
 
 
@@ -40,7 +42,7 @@ class PatchedRuntimeTests(unittest.TestCase):
             digest="a" * 64,
             size=1,
         )
-        self.root = patched_runtime_root(self.paths, self.artifact)
+        self.root = base_runtime_root(self.paths, self.artifact)
         (self.root / "bin").mkdir(parents=True)
         for name in ("wine", "wineserver"):
             executable = self.root / "bin" / name
@@ -72,6 +74,8 @@ class PatchedRuntimeTests(unittest.TestCase):
             self.root,
             self.paths.tools / "wine-test-msclassic1",
         )
+        self.assertEqual(patched_runtime_root(self.paths, self.artifact),
+                         self.paths.tools / "wine-test-msclassic2")
 
     def test_v1_build_is_limited_to_the_validated_ubuntu_home(self):
         self.assertEqual(PATCHED_BUILD_CACHE, Path("/home/ubuntu/.cache/msclassic-build"))
@@ -85,17 +89,18 @@ class PatchedRuntimeTests(unittest.TestCase):
             (self.root / PATCH_STAMP).write_text(
                 json.dumps(patched_runtime_manifest(self.artifact)), encoding="utf-8"
             )
-            self.assertTrue(patched_runtime_valid(self.paths, self.artifact))
+            self.assertTrue(base_runtime_valid(self.paths, self.artifact))
+            self.assertFalse(patched_runtime_valid(self.paths, self.artifact))
 
             (self.root / PATCH_STAMP).write_text("{}", encoding="utf-8")
-            self.assertFalse(patched_runtime_valid(self.paths, self.artifact))
+            self.assertFalse(base_runtime_valid(self.paths, self.artifact))
             (self.root / PATCH_STAMP).write_text(
                 json.dumps(patched_runtime_manifest(self.artifact)), encoding="utf-8"
             )
             (self.root / NTDLL_RELATIVE).write_bytes(b"changed")
-            self.assertFalse(patched_runtime_valid(self.paths, self.artifact))
+            self.assertFalse(base_runtime_valid(self.paths, self.artifact))
 
-    def test_input_diagnostic_runtime_is_side_by_side_and_requires_exact_driver(self):
+    def test_normal_runtime_requires_exact_input_modules_and_ntdll(self):
         diagnostic = diagnostic_runtime_root(self.paths, self.artifact)
         shutil.copytree(self.root, diagnostic)
         driver = diagnostic / DIAGNOSTIC_WINEX11_RELATIVE
@@ -123,12 +128,14 @@ class PatchedRuntimeTests(unittest.TestCase):
             )
             self.assertEqual(
                 diagnostic,
-                self.paths.tools / "wine-test-msclassic-inputcandidate2",
+                self.paths.tools / "wine-test-msclassic2",
             )
             self.assertTrue(diagnostic_runtime_valid(self.paths, self.artifact))
+            self.assertTrue(patched_runtime_valid(self.paths, self.artifact))
 
             driver.write_bytes(b"changed")
             self.assertFalse(diagnostic_runtime_valid(self.paths, self.artifact))
+            self.assertFalse(patched_runtime_valid(self.paths, self.artifact))
             driver.write_bytes(b"diagnostic-driver")
             imm32.write_bytes(b"changed")
             self.assertFalse(diagnostic_runtime_valid(self.paths, self.artifact))

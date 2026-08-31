@@ -1,6 +1,8 @@
 import os
+import shutil
 import stat
 import struct
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
@@ -23,10 +25,43 @@ from msclassic.paths import AppPaths
 
 REPO = Path(__file__).resolve().parents[1]
 PATCH = REPO / "patches/wine-11.10-msclassic-input-diagnostic.patch"
-BUILDER = REPO / "scripts/build-input-diagnostic-wine.sh"
+BUILDER = REPO / "scripts/build-input-wine.sh"
 
 
 class InputDiagnosticPatchTests(unittest.TestCase):
+    def test_routing_state_changes_without_a_diagnostic_file_descriptor(self):
+        compiler = shutil.which("gcc")
+        if compiler is None:
+            self.skipTest("gcc is needed for the Wine input-state probe")
+        patch = PATCH.read_text()
+        section = patch.split("+++ b/dlls/winex11.drv/input_diag.c\n", 1)[1].split("diff --git", 1)[0]
+        source = "\n".join(line[1:] for line in section.splitlines() if line.startswith("+"))
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "config.h").touch()
+            (root / "x11drv.h").write_text(
+                "typedef int BOOL;\n"
+                "enum msclassic_input_diag_category {\n"
+                "MSCLASSIC_DIAG_XIM_FILTERED_KEYBOARD=1,\n"
+                "MSCLASSIC_DIAG_CONTEXT_ATTACHED=8, MSCLASSIC_DIAG_CONTEXT_DETACHED=9};\n"
+                "void msclassic_input_diag_record(enum msclassic_input_diag_category);\n"
+            )
+            (root / "probe.c").write_text(source + "\n#include <assert.h>\n"
+                "int main(void) {\n"
+                "assert(msclassic_input_context_ime_enabled());\n"
+                "msclassic_input_context_set_enabled(0);\n"
+                "assert(!msclassic_input_context_ime_enabled());\n"
+                "msclassic_input_context_set_enabled(1);\n"
+                "assert(msclassic_input_context_ime_enabled());\n"
+                "return 0; }\n")
+            subprocess.run([compiler, "-pthread", str(root / "probe.c"), "-o", str(root / "probe")],
+                           check=True, capture_output=True)
+            env = {"PATH": "/usr/bin:/bin", "MSCLASSIC_INPUT_DIAGNOSTIC": "1"}
+            result = subprocess.run([str(root / "probe")], env=env, capture_output=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(result.stdout, b"")
+            self.assertEqual(result.stderr, b"")
+
     def test_patch_observes_context_and_routes_xim_state_without_synthetic_keys(self):
         text = PATCH.read_text(encoding="utf-8")
 
@@ -199,13 +234,13 @@ class InputDiagnosticLifecycleTests(unittest.TestCase):
         self.temp.cleanup()
 
     def test_arm_start_and_close_use_private_one_shot_state(self):
-        runtime = self.paths.tools / "wine-test-msclassic-inputcandidate2"
+        runtime = self.paths.tools / "wine-test-msclassic2"
         with (
             mock.patch("msclassic.input_diagnostic.diagnostic_runtime_valid", return_value=True),
             mock.patch("msclassic.input_diagnostic.diagnostic_runtime_root", return_value=runtime),
         ):
             armed = arm_input_diagnostic(self.paths, self.artifact)
-            marker = self.paths.state / "input-diagnostic/armed.json"
+            marker = self.paths.state / "input-diagnostic/capture-armed.json"
             self.assertEqual(armed.state, "armed")
             self.assertEqual(input_diagnostic_status(self.paths).state, "armed")
             self.assertEqual(stat.S_IMODE(marker.stat().st_mode), 0o600)

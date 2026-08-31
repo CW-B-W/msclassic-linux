@@ -1,165 +1,52 @@
-# Debugger compatibility
+# Optional debugger compatibility
 
-This optional path is for software and processes you are authorized to inspect.
-It does not disable, patch, hide from, or bypass MapleStory's GRAP/NGS-X
-security chain. An online service may also restrict debugging in its terms;
-follow the service rules and coordinate security research with the vendor.
+The game does not require a debugger. This optional launcher is for software
+and processes you are authorized to inspect; follow the service's rules and
+coordinate security research with the vendor. It does not bypass GRAP/NGS-X.
 
-## Supported boundary
+## Windows debugger in the game prefix
 
-Do not attach the native Linux Cheat Engine debugger to this Wine/Unity client.
-Use a Windows Cheat Engine installation inside the exact Wine runtime and
-prefix used by MapleStory:
+Supply your own legitimate Windows Cheat Engine directory:
 
 ```bash
 msclassic debugger --windows-ce \
   "/absolute/path/to/Cheat Engine/cheatengine-x86_64.exe"
 ```
 
-The operator supplies a legitimate Windows Cheat Engine directory. This
-project neither downloads nor redistributes it. The command accepts only a
-readable `.exe`, uses an argument vector without a shell, forwards a minimal
-desktop environment, and forces both of these paths:
+The command selects the normal `msclassic2` Wine runtime and dedicated
+`~/.local/share/maplestory-classic/prefix-wine1110` prefix. It accepts a
+readable Windows executable, uses no shell, and does not inherit browser
+secrets. The project neither downloads nor redistributes Cheat Engine.
 
-```text
-Wine:   ~/.local/share/maplestory-classic/tools/
-        wine-11.10-staging-tkg-amd64-wow64-msclassic1/bin/wine
-Prefix: ~/.local/share/maplestory-classic/prefix-wine1110
-```
+Windows CE 7.5 attachment, a content-neutral read-only scan, clean detach and
+continued gameplay were validated with the previous base runtime. The input
+release retains the same NTDLL and Wine server, but the combined release's
+debugger/relaunch acceptance still needs confirmation. Do not interpret this
+as a guarantee about arbitrary CE versions or debugger operations.
 
-Using the same prefix is essential: the debugger and target must share the
-same Wine server so the Windows debugger API reaches the Windows process.
+## Native Linux ptrace is unsupported
 
-## Why the native Linux debugger fails
-
-The failure was first observed as Unity's:
+Do not attach native Linux Cheat Engine's debugger to this Wine/Unity client.
+The observed failure is:
 
 ```text
 Fatal error in GC
 SuspendThread loop failed
 ```
 
-It appeared after native Cheat Engine attached with Linux `ptrace`, even when
-Cheat Engine performed no scan. Value scanning was therefore coincidental, not
-the trigger.
+Native debugger stops can interfere with Wine's Windows thread-control
+coordination. Attachment alone reproduced the failure, without scanning.
+Use the same-prefix Windows debugger path for authorized compatibility work;
+increasing VM RAM is not an established fix for this incompatibility.
 
-Wine implements Windows `SuspendThread` and `GetThreadContext` with cooperation
-between wineserver, Unix signals, and the Wine threads. A native debugger adds
-an independent Linux `ptrace` stop to every thread. In an isolated 64-worker
-Windows probe, native Cheat Engine attachment immediately made each
-`GetThreadContext` operation fail with Windows error 5. Unity's Boehm garbage
-collector uses the same suspend/context pattern for stop-the-world collection
-and aborts after its retry loop cannot suspend a thread.
+## Recovery
 
-The exact fatal string and retry behavior are visible in
-[BDWGC's Windows thread implementation](https://github.com/bdwgc/bdwgc/blob/master/win32_threads.c).
-Wine's Linux thread inspection boundary is documented by its
-[`server/ptrace.c`](https://github.com/wine-mirror/wine/blob/master/server/ptrace.c)
-implementation.
-
-## Isolated validation record
-
-The compatibility trial intentionally excluded MapleStory and GRAP:
-
-1. A synthetic Windows executable created 64 worker threads and a 256 MiB test
-   region.
-2. It continuously performed `SuspendThread` → `GetThreadContext` →
-   `ResumeThread` across all workers.
-3. Baseline cycles completed in roughly 11–25 ms with no failures.
-4. Native Linux Cheat Engine attachment caused context failures before any
-   scan.
-5. Windows Cheat Engine in the same Wine server attached, scanned only the
-   synthetic marker, remained attached for 10 minutes, detached cleanly, and
-   left the loop healthy with zero suspend, context, or resume failures.
-
-The result identifies a debugger/Wine thread-control incompatibility. It is
-not evidence of insufficient VM RAM, a Vulkan problem, or GRAP terminating the
-client.
-
-The 2026-08-28 lab used native Linux Cheat Engine 7.7.1 for the failing case
-and a Windows Cheat Engine 7.5 lab copy for the same-prefix case. The Windows
-archive was used only for diagnosis, was not executed as an installer, and is
-not part of this repository. Its recorded SHA-256 was
-`77ba051fc39d2b2c03d23799d4124617633e8e0a9b906ed91bb8186c1a30f88d`.
-Because the versions differ, the isolated result initially validated the
-same-prefix technique and root-cause model. A subsequent supervised live-game
-trial with the same Windows CE 7.5 build is recorded below.
-
-The exact probe source is
-[`diagnostics/suspend-context-probe.c`](../diagnostics/suspend-context-probe.c).
-Build it without overwriting an existing file:
-
-```bash
-mkdir -p ~/.local/state/maplestory-classic/debugger-lab
-bash scripts/build-debugger-probe.sh --output \
-  "$HOME/.local/state/maplestory-classic/debugger-lab/suspend-context-probe.exe"
-```
-
-Run it only in a disposable Wine prefix, never the live game prefix. The probe
-log reports only its own PID, test-region address, cycle timing, worker index,
-and Windows error code. A `context_failed` line with `code=5` is the reproduced
-native-debugger failure. Delete or retain the lab prefix according to your
-normal test-data policy; the project never removes it automatically.
-
-## Supervised live-game validation
-
-On 2026-08-28, the operator launched Windows CE 7.5 through `msclassic
-debugger`, selected only `Maplestory_Classic.exe`, and started CE debugger
-interface `1`, the ordinary Windows debugger:
-
-```lua
-debugProcess(1)
-print(debug_isDebugging(), debug_getCurrentDebuggerInterface())
-```
-
-The controlled sequence and results were:
-
-1. Ten minutes attached with no scan or breakpoint: MapleStory, GRAP, and CE
-   remained alive; no fatal dialog; memory PSI stayed zero.
-2. One exact four-byte scan for the content-neutral constant `123456789`: no
-   result was selected or used.
-3. Five minutes after the scan: all processes remained alive, the operator
-   confirmed normal movement/attack/gameplay, and memory PSI stayed zero.
-4. `detachIfPossible()` returned the debugger interface to nil. MapleStory and
-   GRAP remained alive for a further two minutes, and gameplay remained normal.
-
-The private local audit records use these IDs:
-
-```text
-reports/candidates/20260828-094415-windows-ce-live-no-action/
-reports/candidates/20260828-095139-windows-ce-live-readonly-scan/
-reports/candidates/20260828-095951-windows-ce-live-detach/
-```
-
-Candidate exports are ignored by Git by design. The reviewed, secret-scanned
-summary committed to this repository is
-[Windows debugger compatibility validation — 2026-08-28](2026-08-28-debugger-validation.md).
-
-This validates attach, content-neutral read-only scanning, detach, and continued
-gameplay for that exact CE build and runtime. It does not validate breakpoints,
-watchpoints, memory writes, value freezing, or modifying an online game. Those
-operations remain outside the accepted compatibility result.
-
-For an unambiguous detach status in CE's Lua Engine:
-
-```lua
-detachIfPossible()
-print("debugging=" .. tostring(debug_isDebugging()))
-print("interface=" .. tostring(debug_getCurrentDebuggerInterface()))
-```
-
-Expected after detach is `debugging=false` and `interface=nil`.
-
-## Recovery after a fatal debugger trial
-
-If the game displays the fatal dialog, close it and wait for the client to
-exit. The website handler will refuse another launch while the failed process
-still owns the launch lock. If normal exit cannot finish:
+Close the failed game normally. If it cannot exit:
 
 ```bash
 msclassic stop --yes
 ```
 
-This addresses only the dedicated MapleStory Wine prefix. Relaunch from the
-official website after it completes. Never use a global `pkill` or kill an
-unrelated Wine server.
+This stops only the dedicated game prefix, including same-prefix tools.
+After it completes, launch again through the official website. Do not use a
+global Wine kill command or expose authenticated launch arguments in logs.

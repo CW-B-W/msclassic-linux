@@ -84,6 +84,9 @@ def build_wine_command(
             "WINEDEBUG": "-all",
             "LANG": "zh_TW.UTF-8",
             "LC_ALL": "zh_TW.UTF-8",
+            # The validated DLL ABI uses this flag for contextual IME routing.
+            # Logging is separate: no records are written without the optional FD.
+            "MSCLASSIC_INPUT_DIAGNOSTIC": "1",
         }
     )
     argv = (str(wine), str(executable), *request.arguments)

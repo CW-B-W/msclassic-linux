@@ -9,4 +9,4 @@ python3 -m unittest discover -s "$repo/tests" -v
 bash -n "$repo/platforms/lubuntu-24.04/install.sh"
 bash -n "$repo/platforms/proxmox/readonly-preflight.sh"
 bash -n "$repo/scripts/build-debugger-probe.sh"
-bash -n "$repo/scripts/build-input-diagnostic-wine.sh"
+bash -n "$repo/scripts/build-input-wine.sh"

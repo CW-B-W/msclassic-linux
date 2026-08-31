@@ -13,6 +13,12 @@ A distribution adapter declares:
 
 Protocol parsing, authentication privacy, artifact verification, Wine command isolation, locks, updates, and audit records stay in the shared Python package.
 
+Runtime reproducibility is a separate prerequisite: the current Wine builders
+require `/home/ubuntu/.cache/msclassic-build` and verify exact output hashes.
+A new distribution or home path needs a validated build and matching runtime
+manifest, not just different package names. The contextual-input patch also
+needs live Chinese/chat/gameplay acceptance on the target desktop.
+
 ## Graphics profiles are separate from distribution adapters
 
 The current `proxmox-virgl` gate requires X11, at least 1280×720, a writable render node, and OpenGL containing `virgl`. It deliberately ignores Vulkan success for the game launch.
@@ -35,7 +41,8 @@ A physical Intel/AMD machine should receive a new native-Mesa profile rather tha
 1. Add failing adapter and package-plan tests.
 2. Implement `src/msclassic/platforms/<adapter>.py`.
 3. Add `platforms/<adapter>/install.sh`, policy, and any narrowly scoped registry file.
-4. Add a graphics profile only when the hardware path differs.
+4. Validate the Wine build and desktop input integration; add a graphics profile
+   only when the hardware path differs.
 5. Run `bash scripts/test.sh`, the secret scan, and a real zero-mutation dry-run.
 6. Promote support only after the acceptance evidence above.
 

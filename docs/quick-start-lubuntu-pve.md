@@ -35,10 +35,13 @@ Vulkan/Venus is retained as diagnostic information, but MapleStory does not use 
 | Validated VM sizing | 8 vCPU, 16 GiB RAM |
 | Guest | Lubuntu 24.04, X11, 1440×900 desktop |
 | Game window | 1366×768 |
-| Runtime | `wine-11.10-staging-tkg-amd64-wow64-msclassic1` |
+| Runtime | `wine-11.10-staging-tkg-amd64-wow64-msclassic2` |
 | Game renderer | WineD3D/OpenGL, OpenGL renderer containing `virgl` |
 
-The CPU and memory values are the proven starting point, not measured minimums. Reduce them only as a separate capacity trial.
+The Venus/blob additions are retained from the validated host setup; the game
+itself uses OpenGL, not Vulkan. They are not a claim about minimum requirements.
+
+The CPU and memory values are the observed starting point, not measured minimums. Reduce them only as a separate capacity trial.
 
 ## 1. Prepare the Proxmox node once
 
@@ -118,7 +121,7 @@ There must be one VirtIO GL display and no passed-through PCI GPU. Start the VM 
 
 ## 3. Check guest storage and session
 
-The conservative source-import plan for the observed 2.77 GiB client is about 5.05 GiB of free space, including runtime/download and rollback headroom. The first-time download path checks the current public manifest and requires its reported size plus 1 GiB before it starts:
+Use the installer dry-run to check the source-import space estimate. Allow room for the client, downloaded archive, both build stages, final runtime and rollback headroom; the input runtime adds a 1 GiB reserve. The first-time download path checks the current public manifest and requires its reported size plus 1 GiB before it starts:
 
 ```bash
 df -h /
@@ -127,10 +130,19 @@ echo "$XDG_SESSION_TYPE"
 
 Use an X11 session. If Proxmox shows a larger virtual disk but `/` remains the old size, the guest partition/filesystem has not been expanded yet; fix that separately before a fresh installation. The installer refuses insufficient space rather than partially copying the client.
 
+The current profile uses the `ubuntu` user with home `/home/ubuntu`. Begin with
+a Lubuntu desktop that already has Chromium and Fcitx 5 with the desired
+Chinese input method configured; the project installer does not install the
+browser or configure your personal input methods. On the reference VM this is
+`fcitx5-mcbopomofo`, with Left Shift as the Chinese/English switch. Confirm
+Chinese composition works in a normal desktop text field before installing the
+game. If starting from a stock image instead of this desktop template, complete
+that desktop/input-method setup first.
+
 ## 4. Clone and preview
 
 ```bash
-git clone git@github.com:CW-B-W/msclassic-linux.git
+git clone --branch main --single-branch https://github.com/CW-B-W/msclassic-linux.git
 cd msclassic-linux
 bash scripts/test.sh
 bash platforms/lubuntu-24.04/install.sh \
@@ -145,7 +157,7 @@ path instead:
 bash platforms/lubuntu-24.04/install.sh --dry-run --download-client
 ```
 
-Dry-run performs no sudo, package, network, or filesystem mutation. Source mode validates and sizes the source tree. Download mode intentionally does not contact the public manifest, so it reports no guessed client size; the real mode performs the checked manifest gate before downloading. Both list only the locked Wine 11.10 and nxdl artifacts. The real installation also installs the pinned compiler tools needed to build the small audited Wine NTDLL patch.
+Dry-run performs no sudo, package, network, or filesystem mutation. Source mode validates and sizes the source tree. Download mode intentionally does not contact the public manifest, so it reports no guessed client size; the real mode performs the checked manifest gate before downloading. Both list only the locked Wine 11.10 and nxdl artifacts. The real installation also installs the distribution's compiler tools needed to build the audited NTDLL and contextual-input patches. Compiler packages are not version-pinned; the builders reject any output that differs from the validated DLL hashes.
 
 The source must contain the legitimate Windows client, including `Maplestory_Classic.exe`, `UnityPlayer.dll`, `GameAssembly.dll`, and the expected game plug-in tree. Game files are never committed to this repository.
 
@@ -174,9 +186,9 @@ Beanfun page.
 The two stages are:
 
 1. Lubuntu bootstrap: enable i386, install the adapter's Mesa diagnostics and utilities, generate `zh_TW.UTF-8`, and install the Chromium policy scoped to the official site.
-2. Application install: require working X11/VirGL, verify exact artifact hashes, build and verify the NTDLL patch from the pinned Wine source commit, copy or verify the writable client, initialize a complete dedicated Wine prefix, run the game-shipped `NGService.exe -install`, import narrow focus/runtime settings, install `~/.local/bin/msclassic`, and register the three observed external-protocol MIME spellings with rollback state.
+2. Application install: require working X11/VirGL, verify exact artifact hashes, build and verify the NTDLL base runtime and then the contextual-input runtime from the pinned Wine source commit, copy or verify the writable client, initialize a complete dedicated Wine prefix, run the game-shipped `NGService.exe -install`, import narrow focus/runtime settings, install `~/.local/bin/msclassic`, and register the three observed external-protocol MIME spellings with rollback state.
 
-The patched build is fail-closed. It checks the source commit, source-file hash, patch hash, stock NTDLL hash, final patched NTDLL size/hash, and two runtime manifests. Wine embeds its source path in NTDLL, so v1 currently supports only the validated `/home/ubuntu` profile and builds under `/home/ubuntu/.cache/msclassic-build`. A different username or home path is rejected before compilation; path-independent builds are future portability work.
+The patched build is fail-closed. It checks the source commit, source-file hash, patch hash, stock NTDLL hash, final patched NTDLL size/hash, and runtime manifests. The input builder additionally verifies the patched IMM32 and X11 driver hashes. Wine embeds its source path in NTDLL, so the current profile supports only the validated `/home/ubuntu` profile and builds under `/home/ubuntu/.cache/msclassic-build`. A different username or home path is rejected by the runtime builder; path-independent builds are future portability work.
 
 Persistent locations follow XDG conventions:
 
@@ -237,11 +249,11 @@ edits `/etc`, Proxmox, or the host.
 
 `Alt+Tab` and `Alt+Shift+Tab` remain available so the player can leave the
 game. Current Fcitx configuration uses Left Shift to switch Chinese/English;
-that trigger remains available. The required final behavior is for Chinese to
+that trigger remains available. The intended behavior is for Chinese to
 remain selected across chat and gameplay while gameplay letters remain raw
-outside chat. That contextual Wine/X11 routing is not yet released: the
-current checkpoint fixes desktop shortcuts but does not claim the contextual
-IME behavior.
+outside chat. This behavior was confirmed with the input DLLs included in
+msclassic2. The normal launch enables it automatically; no diagnostic command
+is needed. Logging is off by default.
 
 Inspect or recover the profile without a launch URL:
 
@@ -280,45 +292,24 @@ profile observes guest state only; it does not change Proxmox. Any host change
 must still be applied by the operator in Proxmox WebUI after the data supports
 that experiment.
 
-### Contextual IME diagnostic (development only)
+### Optional input diagnostics
 
-The current development branch includes an isolated **experimental input
-candidate**, not a verified gameplay fix. Normal website launches use the
-known-good runtime unless a diagnostic run or persistent candidate selection
-is enabled. Build the candidate from the installed project assets only when
-investigating the Chinese gameplay/chat boundary:
+The input fix is part of the normal runtime. Diagnostics do **not** select a
+different runtime and are not required for gameplay.
 
 ```bash
-~/.local/share/maplestory-classic/app/scripts/build-input-diagnostic-wine.sh \
-  --base-runtime ~/.local/share/maplestory-classic/tools/wine-11.10-staging-tkg-amd64-wow64-msclassic1 \
-  --output ~/.local/share/maplestory-classic/tools/wine-11.10-staging-tkg-amd64-wow64-msclassic-inputcandidate2 \
-  --cache ~/.cache/msclassic-build
-msclassic input diagnose --persistent
+msclassic input diagnose             # log the next website launch only
+msclassic input diagnose --persistent # optionally log successive launches
+msclassic input diagnostic-status
+msclassic input diagnostic-stop      # disable future captures, keep input fix
 ```
 
-`diagnose --persistent` selects this exact candidate build for **every subsequent
-official website launch**, including after game crashes, normal exits, and VM
-reboots. No rearming is needed. Runtime hashes are checked at every launch;
-missing or changed candidate files cause a refusal, not silent fallback. A
-changed build pin requires explicit reselection. This does not alter a game
-already running: close it and launch again from the website.
-
-`msclassic input diagnostic-status` reports `enabled` between runs and
-`capturing` during a diagnostic launch. `msclassic input diagnostic-stop`
-disables the selection for future launches without killing the current game;
-close the game and relaunch to return to the known-good runtime. Without
-`--persistent`, `diagnose` retains its original one-launch behavior.
-
-Each diagnostic launch creates a separate private log. The binary log
-contains only fixed event categories and monotonic timestamps; it cannot
-contain key identities, typed or composed text, coordinates, window titles,
-launch arguments, URIs, or account data. Check state with
-`msclassic input diagnostic-status`. After the game exits, summarize the
-private `0600` log with `msclassic input summarize PATH`. Do not commit or
-share the raw log. Candidate 2 changes Wine's IMM32/X11 routing based on input
-context attachment, but whether that signal tracks this game's chat state
-remains unverified. Passing launcher tests is not proof of working gameplay.
-See [the deployment audit](trials/2026-08-31-persistent-input-candidate.md).
+After the game exits, summarize a private log with
+`msclassic input summarize PATH`. Logs are stored under
+`~/.local/state/maplestory-classic/input-diagnostic/` and contain only fixed
+categories and timestamps, not key identities, text or authenticated values.
+Do not commit raw logs. Stopping diagnostics does not disable the input fix;
+an active capture finishes when its game exits.
 
 ## 7. Launch through the official website
 
@@ -326,12 +317,12 @@ Open Chromium inside the guest and visit:
 
 <https://maplestoryclassic.beanfun.com/Main?af_click_id=>
 
-The validated personal login sequence is:
+Use your own account through the official login sequence:
 
 1. Choose **GamePass**—not the Hong Kong login method.
 2. Choose **Google**.
-3. Choose the operator's default Google account.
-4. On the Beanfun account step, choose `bradhk`.
+3. Choose your Google account.
+4. On the Beanfun account step, choose your game account.
 5. Return to the Classic page and press its game launch control.
 6. If Chromium asks to open an external application, confirm only when the origin is the official site and the protocol is `ngm`.
 
@@ -360,7 +351,7 @@ dedicated MapleStory Wine prefix. Then launch again from the website.
 
 ## 8. Acceptance and scale-out
 
-After maintenance, validate one VM before cloning the setup. For the new
+Validate one VM before reproducing the setup on another. For the new
 first-time-download path, do this first on a second fresh VM without a mounted
 client source; it is not yet a completed acceptance result:
 

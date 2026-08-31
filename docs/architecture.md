@@ -1,65 +1,95 @@
 # Architecture
 
-The official Beanfun site issues an authenticated NGM launch request after the operator signs in. A narrowly scoped Chromium policy hands that request to a private freedesktop handler. The Python core validates game code `2982`, keeps the private values out of logs, performs an automatic current-boot graphics check when needed, and launches the Windows client as an argument vector without a shell.
-
-The initial graphics path is:
+## Launch path
 
 ```text
-PVE Intel iGPU and i915
-  → QEMU virtio-vga-gl and virglrenderer
-  → Lubuntu Mesa VirGL OpenGL
-  → hash-verified Wine 11.10 NTDLL patch + WineD3D
-  → Maplestory_Classic.exe
+Official Beanfun website in Chromium
+  → ngm / NexonPlug desktop handler
+  → bounded authenticated-argument parser
+  → automatic current-boot X11/VirGL check
+  → Wine 11.10 msclassic2
+  → MapleStory Classic + vendor security services
+
+Direct3D → WineD3D → OpenGL → Mesa VirGL → shared host GPU
 ```
 
-The runtime builder starts from a locked Wine archive, applies one audited patch to one NTDLL source file at a pinned upstream commit, and accepts only the exact known-good DLL hash. The Windows service path is equally narrow:
+The handler accepts game code `2982`, uses an argument vector without a shell,
+and keeps authenticated data out of status output. A small allowlisted
+environment carries display, audio, D-Bus and Fcitx settings. The desktop
+registration covers game protocols only, never HTTP/HTTPS defaults.
+
+## Runtime construction
+
+The installer verifies the locked Wine archive in `versions.lock`, then builds:
+
+1. `msclassic1`: the audited NTDLL frame-walk page-fault guard.
+2. `msclassic2`: the same NTDLL plus the contextual-input
+   `imm32.dll` and `winex11.so`.
+
+The two input DLLs are the exact hashes validated in live gameplay, not a
+new input implementation. The default launcher, updater, prefix setup and
+optional Windows-debugger launcher all reference `msclassic2`.
+Normal launches reject an incomplete or mismatched runtime.
+
+| File | SHA-256 |
+| --- | --- |
+| `ntdll.dll` | `2bb7613fead5e50b4fa47e65f1d2856a5b8d8301a58a806d1a7214451004123d` |
+| `winex11.so` | `846f33382d663be8e4d92d0c533044c4b89f4c5c44a347fbf007221b12024bd8` |
+| `imm32.dll` | `6ffb4ef5528e48d6e79d7d9da0fe7d0d86f2cfa3ece0847f886942583f28a5aa` |
+
+Source commit, patch, input and output hashes are checked by the builders.
+Build/source paths under `/home/ubuntu/.cache/msclassic-build` remain fixed to
+reproduce the validated binaries. This is a documented portability boundary.
+
+## Keyboard and Chinese input
+
+Wine's IMM32 patch forwards successful input-context association changes to
+the X11 driver. The driver bypasses XIM filtering for keyboard events while
+the context is detached; when attached, normal XIM handling remains active.
+The player can leave Chinese selected while action keys work outside chat.
+
+The validated binary ABI calls its enable flag
+`MSCLASSIC_INPUT_DIAGNOSTIC=1`. Despite that historical name, the flag enables
+input-context notification; writing logs separately requires
+`MSCLASSIC_INPUT_DIAGNOSTIC_FD`. Normal launches set the first and **omit
+the descriptor**, so the fix works without diagnostic recording. Keeping
+this ABI avoids changing the tested binaries just to rename an internal flag.
+
+Desktop shortcut handling is separate. The launcher snapshots the per-user
+Openbox configuration and LXQt enabled-action states. It preserves Alt+Tab,
+Alt+Shift+Tab and LXQt hardware controls, disables other configured shortcuts
+for the game session, then restores previous settings on exit. It does not
+force Fcitx to English, synthesize keys, or change key-repeat handling.
+
+The shortcut profile lasts for the game session, including when another
+window is foreground. It cannot prevent shortcuts consumed by the remote
+client or mandatory OS security controls.
+
+## Vendor service and privacy
 
 ```text
-grap64.dll
-  → Wine Service Control Manager
-  → game-shipped NGService.exe
-  → game-shipped grap-core64.aes
+Game grap64.dll → Wine Service Control Manager
+  → game-shipped NGService.exe → game-shipped grap-core64.aes
 ```
 
-The installer never fabricates GRAP arguments or service entries. It creates a complete Wine prefix, invokes the vendor's own `NGService.exe -install`, and rejects a prefix that lacks `RpcSs`, `PlugPlay`, `NGS`, or the installed broker.
+The installer invokes the vendor's own service installation and verifies the
+required service baseline. It does not manufacture launch arguments, patch
+GRAP, or emulate a Windows kernel-protection driver.
 
-The protocol handler builds a deliberately small environment rather than
-forwarding the browser's complete environment. In addition to display, audio,
-and D-Bus state, it forwards `XMODIFIERS`, `GTK_IM_MODULE`, and
-`QT_IM_MODULE` so Wine's X11 driver can open the active Fcitx XIM service.
+Game launch and client updates share a nonblocking private lock. The updater
+downloads public game content only. No signed-in browser profile, game
+credential or authenticated URL is part of the repository.
 
-For the supported Lubuntu X11 session, the handler also invokes a small
-per-game input-profile manager. It leaves Fcitx in the user's selected mode,
-transactionally snapshots the user's Openbox file, and enumerates the running
-LXQt shortcut daemon through `org.lxqt.global_key_shortcuts`. The profile keeps
-`Alt+Tab` and `Alt+Shift+Tab`, disables non-hardware LXQt actions through their
-D-Bus action IDs, and preserves XF86 and brightness controls. A `finally`
-cleanup restores the exact Openbox bytes and every saved LXQt enabled state;
-`msclassic input status` and `msclassic input restore` expose safe inspection
-and crash recovery. It never edits the LXQt shortcut file, restarts the LXQt
-daemon, or writes system configuration.
+## Optional diagnostics
 
-An optional one-shot profiler runs as a sampler thread owned by the authenticated
-launcher, not as a persistent service. It reads fixed numeric counters from
-`/proc` and PSI once per second and writes a private JSON-lines file. It never
-reads process command lines or records input, paths, window metadata, launch
-arguments, or account data. Removing its control marker stops sampling without
-stopping Wine.
+Input diagnostics record fixed category/timestamp records, never key names,
+typed text, window titles or authenticated values. Explicit persistent
+logging pins the runtime manifests; legacy development-selection markers do
+not enable logging in this release.
 
-The contextual IME investigation uses a second, side-by-side Wine directory.
-It copies the validated runtime, replaces only `winex11.so` with a driver built
-from the same pinned source commit, and validates the source, patch, base
-driver, NTDLL, output driver, and manifests by digest. Normal launches and
-Windows CE never select it. An explicitly armed launch passes one append-only
-private file descriptor and records fixed-size values containing only a
-monotonic timestamp, process-local sequence, schema, and event-category enum.
-No key identity, text, rectangle coordinates, window metadata, command line,
-or authenticated value is available to the record format.
+Performance profiling is a launcher-owned thread sampling numeric guest
+counters once per second. It is not a permanent service or a GPU/FPS profiler.
+It is disabled unless explicitly armed and never modifies Proxmox.
 
-Optional authorized debugging has a separate launcher boundary. It accepts
-only a readable Windows `.exe`, starts it with the exact pinned Wine binary and
-the exact game prefix, and does not forward browser secrets. Native Linux
-debugger attachment is deliberately unsupported because Linux `ptrace` stops
-interfere with Wine's implementation of Windows thread suspend/context calls.
-
-Vulkan/Venus remains useful diagnostic information but is not the MapleStory rendering path. Distribution-neutral protocol, privacy, runtime, and audit code is separated from the Lubuntu package/desktop adapter and the read-only Proxmox operator tooling. Runtime profile v1 still has one intentional platform constraint: Wine's embedded build path is locked to `/home/ubuntu`; removing it is required before other usernames/distributions can be declared supported.
+Distribution-neutral parsing, privacy and runtime code are separated from the
+Lubuntu desktop/package adapter and read-only Proxmox inspection helper.

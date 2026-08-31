@@ -8,7 +8,6 @@ secret_names="passarg|otp|cookie|authorization|serviceaccount|token"
 named_pattern="(${secret_names})[=:][^[:space:],;}]+"
 
 if rg -n -i -e "$uri_pattern" -e "$named_pattern" "$target" \
-  --glob '!docs/superpowers/**' \
   --glob '!tests/**' \
   --glob '!src/msclassic/redaction.py' \
   --glob '!.git/**'; then

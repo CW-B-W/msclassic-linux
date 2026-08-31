@@ -13,8 +13,8 @@ PATCH_ID = "wine-11.10-ntdll-frame-walk-page-fault-guard-v1"
 SOURCE_COMMIT = "4b12965ca7e78b8e45eee5f835c72963b3ce351d"
 PATCHED_BUILD_HOME = Path("/home/ubuntu")
 PATCHED_BUILD_CACHE = PATCHED_BUILD_HOME / ".cache/msclassic-build"
-PATCHED_RUNTIME_SUFFIX = "-msclassic1"
-DIAGNOSTIC_RUNTIME_SUFFIX = "-msclassic-inputcandidate2"
+BASE_RUNTIME_SUFFIX = "-msclassic1"
+PATCHED_RUNTIME_SUFFIX = "-msclassic2"
 PATCHED_NTDLL_SHA256 = "2bb7613fead5e50b4fa47e65f1d2856a5b8d8301a58a806d1a7214451004123d"
 PATCHED_NTDLL_SIZE = 1_101_568
 PATCH_STAMP = ".msclassic-runtime.json"
@@ -36,7 +36,11 @@ def patched_runtime_root(paths: AppPaths, artifact: Artifact) -> Path:
 
 
 def diagnostic_runtime_root(paths: AppPaths, artifact: Artifact) -> Path:
-    return paths.tools / f"{artifact.version}{DIAGNOSTIC_RUNTIME_SUFFIX}"
+    return patched_runtime_root(paths, artifact)
+
+
+def base_runtime_root(paths: AppPaths, artifact: Artifact) -> Path:
+    return paths.tools / f"{artifact.version}{BASE_RUNTIME_SUFFIX}"
 
 
 def patched_runtime_build_supported(paths: AppPaths) -> bool:
@@ -70,8 +74,12 @@ def diagnostic_runtime_manifest(artifact: Artifact) -> dict[str, object]:
 
 
 def patched_runtime_valid(paths: AppPaths, artifact: Artifact) -> bool:
+    return diagnostic_runtime_valid(paths, artifact)
+
+
+def base_runtime_valid(paths: AppPaths, artifact: Artifact) -> bool:
     tools = paths.tools.resolve()
-    root = patched_runtime_root(paths, artifact).resolve()
+    root = base_runtime_root(paths, artifact).resolve()
     if not root.is_relative_to(tools):
         return False
     return _patched_runtime_content_valid(root, artifact)

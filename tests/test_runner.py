@@ -187,6 +187,33 @@ class RunnerTests(unittest.TestCase):
             {"schema": 1, "gate_passed": True, "boot_id": self.boot_id},
         )
 
+    def test_normal_launch_enables_contextual_input_without_a_logging_descriptor(self):
+        with mock.patch.dict(os.environ, {"MSCLASSIC_INPUT_DIAGNOSTIC_FD": "99"}):
+            env, argv = build_wine_command(LaunchRequest("2982", None, ("safe",)), self.paths)
+        self.assertEqual(Path(argv[0]).parent.parent.name,
+                         "wine-11.10-staging-tkg-amd64-wow64-msclassic2")
+        self.assertEqual(env.get("MSCLASSIC_INPUT_DIAGNOSTIC"), "1")
+        self.assertNotIn("MSCLASSIC_INPUT_DIAGNOSTIC_FD", env)
+
+    def test_normal_launch_ignores_legacy_markers_without_opening_a_capture(self):
+        directory = self.paths.state / "input-diagnostic"
+        directory.mkdir()
+        for name in ("armed.json", "active.json", "persistent.json"):
+            (directory / name).write_text('{"schema":1,"runtime":"old-candidate"}')
+        with (
+            mock.patch("msclassic.runner.start_armed_input_diagnostic", start_armed_input_diagnostic),
+            mock.patch("msclassic.runner.subprocess.run", wraps=subprocess.run) as invoked,
+            mock.patch.dict(os.environ, {"MSCLASSIC_INPUT_DIAGNOSTIC_FD": "99"}),
+        ):
+            result = run_authenticated(LaunchRequest("2982", None, ("safe",)), self.paths)
+        self.assertEqual(result, 0)
+        self.assertTrue(self.wine.with_name("receipt.txt").is_file())
+        self.assertEqual(invoked.call_args.kwargs["pass_fds"], ())
+        self.assertEqual(invoked.call_args.kwargs["env"]["MSCLASSIC_INPUT_DIAGNOSTIC"], "1")
+        self.assertNotIn("MSCLASSIC_INPUT_DIAGNOSTIC_FD", invoked.call_args.kwargs["env"])
+        self.assertEqual(sorted(p.name for p in directory.iterdir()),
+                         ["active.json", "armed.json", "persistent.json"])
+
     def test_existing_current_approval_skips_collector(self):
         collector = mock.Mock(side_effect=AssertionError("must not collect"))
 
@@ -326,11 +353,11 @@ class RunnerTests(unittest.TestCase):
             with self.assertRaises(ActiveSessionError):
                 run_authenticated(LaunchRequest("2982", None, ("safe",)), self.paths)
 
-    def test_persistent_candidate_reaches_real_child_on_successive_authenticated_launches(self):
+    def test_persistent_logging_reaches_real_child_on_successive_authenticated_launches(self):
         artifact = load_versions(REPO / "versions.lock")["wine"]
-        runtime = self.paths.tools / f"{artifact.version}-msclassic-inputcandidate2"
+        runtime = self.paths.tools / f"{artifact.version}-msclassic2"
         wine = runtime / "bin/wine"
-        wine.parent.mkdir(parents=True)
+        wine.parent.mkdir(parents=True, exist_ok=True)
         wine.write_text(
             "#!/usr/bin/python3\n"
             "import os\n"

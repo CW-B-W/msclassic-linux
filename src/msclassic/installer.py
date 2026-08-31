@@ -26,6 +26,8 @@ from .paths import AppPaths
 from .platforms import PlatformAdapter, read_os_release, select_platform
 from .runtime import (
     PATCHED_BUILD_CACHE,
+    base_runtime_root,
+    base_runtime_valid,
     patched_runtime_build_supported,
     patched_runtime_root,
     patched_runtime_valid,
@@ -33,6 +35,7 @@ from .runtime import (
 
 
 MINIMUM_FREE_BYTES = 2 * 1024**3
+INPUT_RUNTIME_HEADROOM_BYTES = 1024**3
 REQUIRED_CLIENT_FILES = (
     "Maplestory_Classic.exe",
     "UnityPlayer.dll",
@@ -101,6 +104,8 @@ def build_install_plan(
     elif "nxdl" not in artifacts:
         raise InstallerError("locked nxdl artifact is required for client download")
     required_bytes = source_bytes + sum(item.size * 3 for item in artifacts.values()) + MINIMUM_FREE_BYTES
+    if "wine" in artifacts:
+        required_bytes += INPUT_RUNTIME_HEADROOM_BYTES
     actions: list[InstallAction] = [InstallAction("install_packages", adapter.package_names)]
 
     downloads = paths.cache / "downloads"
@@ -129,9 +134,18 @@ def build_install_plan(
             )
             actions.append(
                 InstallAction(
-                    "prepare_patched_runtime",
+                    "prepare_base_runtime",
                     (name, artifact.version),
                     source=runtime_destination,
+                    destination=base_runtime_root(paths, artifact),
+                    artifact=artifact,
+                )
+            )
+            actions.append(
+                InstallAction(
+                    "prepare_patched_runtime",
+                    (name, artifact.version),
+                    source=base_runtime_root(paths, artifact),
                     destination=patched_runtime_root(paths, artifact),
                     artifact=artifact,
                 )
@@ -271,6 +285,9 @@ def _execute_action(action: InstallAction, paths: AppPaths, registry_path: Path)
     if action.kind == "extract_artifact":
         _extract_artifact(action)
         return
+    if action.kind == "prepare_base_runtime":
+        _prepare_base_runtime(action, paths)
+        return
     if action.kind == "prepare_patched_runtime":
         _prepare_patched_runtime(action, paths)
         return
@@ -397,16 +414,16 @@ def _install_binary(action: InstallAction) -> None:
     temporary.replace(destination)
 
 
-def _prepare_patched_runtime(action: InstallAction, paths: AppPaths) -> None:
+def _prepare_base_runtime(action: InstallAction, paths: AppPaths) -> None:
     artifact = action.artifact
     source = action.source
     destination = action.destination
     if artifact is None or artifact.name != "wine" or source is None or destination is None:
         raise InstallerError("invalid patched Wine runtime action")
-    if patched_runtime_valid(paths, artifact):
+    if base_runtime_valid(paths, artifact):
         return
     expected_source = paths.tools / artifact.version
-    expected_destination = patched_runtime_root(paths, artifact)
+    expected_destination = base_runtime_root(paths, artifact)
     try:
         paths_match = (
             source.resolve() == expected_source.resolve()
@@ -441,8 +458,39 @@ def _prepare_patched_runtime(action: InstallAction, paths: AppPaths) -> None:
         )
     except (OSError, subprocess.TimeoutExpired) as exc:
         raise InstallerError("patched Wine runtime build failed") from exc
-    if completed.returncode != 0 or not patched_runtime_valid(paths, artifact):
+    if completed.returncode != 0 or not base_runtime_valid(paths, artifact):
         raise InstallerError("patched Wine runtime build failed verification")
+
+
+def _prepare_patched_runtime(action: InstallAction, paths: AppPaths) -> None:
+    artifact = action.artifact
+    if artifact is None or artifact.name != "wine":
+        raise InstallerError("invalid input runtime action")
+    source = base_runtime_root(paths, artifact)
+    destination = patched_runtime_root(paths, artifact)
+    if action.source != source or action.destination != destination:
+        raise InstallerError("invalid input runtime paths")
+    if patched_runtime_valid(paths, artifact):
+        return
+    if not base_runtime_valid(paths, artifact):
+        raise InstallerError("verified base Wine runtime is required")
+    if destination.exists():
+        raise InstallerError("invalid input runtime already exists; refusing to overwrite it")
+    if not patched_runtime_build_supported(paths):
+        raise InstallerError("input Wine build requires the validated /home/ubuntu profile")
+    builder = _REPO / "scripts/build-input-wine.sh"
+    if not builder.is_file() or not os.access(builder, os.X_OK):
+        raise InstallerError("input Wine runtime builder is unavailable")
+    try:
+        completed = subprocess.run(
+            [str(builder), "--base-runtime", str(source), "--output", str(destination),
+             "--cache", str(PATCHED_BUILD_CACHE)],
+            shell=False, stdin=subprocess.DEVNULL, timeout=45 * 60, check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise InstallerError("input Wine runtime build failed") from exc
+    if completed.returncode != 0 or not patched_runtime_valid(paths, artifact):
+        raise InstallerError("input Wine runtime build failed verification")
 
 
 def _import_client(action: InstallAction) -> None:
