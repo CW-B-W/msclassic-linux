@@ -1,0 +1,10 @@
+{
+  "AutoLaunchProtocolsFromOrigins": [
+    {
+      "protocol": "ngm",
+      "allowed_origins": [
+        "https://maplestoryclassic.beanfun.com"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=MapleStory Classic Web Launcher Handler
+Comment=Open authenticated MapleStory Classic launches
+Terminal=false
+Exec=@WRAPPER@ handle-url %u
+MimeType=x-scheme-handler/nexonplug;x-scheme-handler/NexonPlug;x-scheme-handler/ngm;
+Categories=Game;

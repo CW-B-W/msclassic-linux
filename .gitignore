@@ -1,0 +1,14 @@
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.worktrees/
+downloads/
+prefix*/
+Games/
+reports/candidates/
+*.tar
+*.tar.*
+*.zip
+*.exe
+*.dll

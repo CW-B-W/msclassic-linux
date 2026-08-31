@@ -1,0 +1,15 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "msclassic-linux"
+version = "0.1.0"
+description = "Unofficial Linux compatibility tooling for MapleStory Classic"
+requires-python = ">=3.12"
+
+[project.scripts]
+msclassic = "msclassic.cli:entrypoint"
+
+[tool.setuptools.packages.find]
+where = ["src"]
