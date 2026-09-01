@@ -12,8 +12,9 @@ Intel iGPU. This page distinguishes observed results from remaining checks.
 | Alt+Space suppression and Alt+Tab access | Operator-confirmed |
 | Normal installation includes contextual input | Automated installer/launcher tests; release DLL hashes checked |
 | Input state changes with diagnostic logging disabled | Compiled native probe of the patched state-management code |
-| Release runtime live acceptance with logging off | To confirm separately from the earlier logging-enabled test |
-| Release reboot and fresh second-VM acceptance | Pending |
+| Release runtime live acceptance with logging off | Validated on 2026-09-01: automatic website launch, live map, exact msclassic2 modules, normal exit and shortcut restoration |
+| First-VM launch after guest reboot without manual doctor | Validated on 2026-09-01; the website launch refreshed and passed the graphics gate for the current boot |
+| Fresh second-VM acceptance from public download | Pending |
 | Two to four concurrent VMs | Pending capacity measurement |
 | Crowded-map/fast-movement stutter | Unresolved; optional numeric profiler available |
 | Sunshine/Moonlight, other distros/hardware | Not yet validated |
@@ -35,3 +36,9 @@ Intel iGPU. This page distinguishes observed results from remaining checks.
 Use the same remote client and resolution when comparing performance.
 Record only versions, hashes, numeric metrics and non-sensitive observations.
 Never publish private launch arguments, account data or raw input logs.
+
+Automated input checks must wait for the chat context to detach before sending
+the first gameplay key. A deliberately immediate synthetic `Escape` → `C`
+sequence can outrun that context transition; after detach, `C` reaches gameplay
+and is not filtered by XIM. This is a test-timing caveat, not a requirement to
+run diagnostics or add a delay during normal play.

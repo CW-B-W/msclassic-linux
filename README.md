@@ -26,8 +26,8 @@ activate it, and no manual doctor command is needed after reboot.**
 Diagnostics and performance logging are optional and off by default.
 
 This is a single-VM validated profile, not a promise of identical behavior on
-every machine. Fresh-VM, post-reboot, long-session and multi-VM acceptance
-remain explicit checks in [validation](docs/validation.md). Crowded-map
+every machine. Fresh-VM, long-session and multi-VM acceptance remain explicit
+checks in [validation](docs/validation.md). Crowded-map
 stutter is not yet resolved. Fedora, Arch, physical hardware and Wayland are
 [future targets](docs/roadmap.md).
 
