@@ -14,9 +14,10 @@ The graphics path remains WineD3D/OpenGL with no GPU passthrough.
 5. Recheck the optional Windows-debugger workflow against the combined release
    runtime; native Linux `ptrace` remains unsupported for the game.
 
-The profiler is available, but no measured crowded-map performance fix is
-claimed. VM creation, power operations and host changes stay with the operator
-in Proxmox WebUI.
+The first quiet-map idle/movement profile found higher game/render CPU during
+movement with no memory, swap or storage pressure. It did not measure FPS or a
+crowded map, so no performance fix is claimed. VM creation, power operations
+and host changes stay with the operator in Proxmox WebUI.
 
 ## Future portability
 

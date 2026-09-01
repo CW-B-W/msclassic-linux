@@ -16,7 +16,7 @@ Intel iGPU. This page distinguishes observed results from remaining checks.
 | First-VM launch after guest reboot without manual doctor | Validated on 2026-09-01; the website launch refreshed and passed the graphics gate for the current boot |
 | Fresh second-VM acceptance from public download | Pending |
 | Two to four concurrent VMs | Pending capacity measurement |
-| Crowded-map/fast-movement stutter | Unresolved; optional numeric profiler available |
+| Crowded-map/fast-movement stutter | Unresolved; first controlled idle/movement profile points away from memory, swap and storage pressure |
 | Sunshine/Moonlight, other distros/hardware | Not yet validated |
 
 ## Acceptance on each new VM
@@ -42,3 +42,24 @@ the first gameplay key. A deliberately immediate synthetic `Escape` → `C`
 sequence can outrun that context transition; after detach, `C` reaches gameplay
 and is not filtered by XIM. This is a test-timing caveat, not a requirement to
 run diagnostics or add a delay during normal play.
+
+## First controlled performance profile
+
+On 2026-09-01, the release runtime was profiled on the validated 1366×768 game
+window and same quiet map. The comparison used 62 seconds idle and 50 seconds
+of alternating held left/right movement:
+
+| Metric | Idle | Movement |
+| --- | ---: | ---: |
+| Game/Wine CPU, one-core equivalent | 56.0% | 74.5% |
+| Average RSS | 1039.1 MiB | 1045.4 MiB |
+| Minimum guest memory available | 7874.7 MiB | 7977.7 MiB |
+| Swap pages in/out | 0 / 0 | 0 / 0 |
+| CPU pressure (`some`) | 1.088% | 1.031% |
+| I/O full pressure | 0.108% | 0.010% |
+
+This sample shows higher game/render CPU during movement without memory, swap
+or storage pressure. It does not measure frame rate and was not a crowded map,
+so it does not identify whether the remaining stutter is in Unity's main
+thread, WineD3D, guest VirGL, or the host render path. The next comparison must
+repeat the same method on a reproducibly crowded scene.
